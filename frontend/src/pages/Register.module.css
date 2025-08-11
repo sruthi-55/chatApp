@@ -1,0 +1,137 @@
+body {
+  background-color: #143A52;
+  margin: 0;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+.container {
+  /* max-width: 380px; */
+  width:500px;
+  margin: 80px auto;
+  padding: 50px;
+  background: #CDE3EB;   
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.title{
+  text-align: center;
+  margin-bottom: 20px;
+  margin-top: 0px;
+  color: #143A52;
+}
+
+.form-group {
+  margin-bottom: 18px;
+}
+
+.avatar-name-row{
+  display: flex;
+  /* align-items: flex-start; */
+  /* align-content: flex-end; */
+  justify-content: space-between;
+  align-items: center;
+
+}
+.avatar-name-row > :nth-child(1) {
+  flex: 1; 
+}
+
+.avatar-name-row > :nth-child(2) {
+  flex: 2.5; 
+}
+
+.avatar {
+  display: inline-block;
+  cursor: pointer;
+  /* padding-left: 10px; */
+  /* padding-top: 20px; */
+}
+
+.avatar-img {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit:cover;
+  border: 10px solid #143A52;
+  
+}
+
+.name-fields{
+  margin-left: 30px;
+}
+
+label {
+  display: block;
+  margin-top: 10px;
+  margin-bottom: 2px;
+  font-weight: 500;
+  color: #143A52;
+}
+
+
+input, select, textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #6E828A;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #E3EFF3; 
+  color: #143A52;
+  outline: none;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: #143A52;
+  box-shadow: 0 0 4px rgba(20, 58, 82, 0.4);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 70px;
+}
+
+
+.button-group {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 30px;
+  gap: 50px;
+}
+
+button {
+  width: 300px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #143A52;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+button:hover:not(:disabled) {
+  background: #0E2B3D;
+}
+
+button:disabled {
+  background: #6E828A;
+}
+
+.cancel-btn {
+  background: #E3EFF3;
+  color: #143A52;
+}
+
+.cancel-btn:hover {
+  background: #6E828A;
+  color: white;
+}
+
+.error-text {
+  color: red;
+  margin-bottom: 12px;
+  font-size: 14px;
+}

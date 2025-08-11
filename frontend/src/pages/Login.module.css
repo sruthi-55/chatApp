@@ -1,0 +1,95 @@
+body {
+  background-color: #143A52;
+  margin: 0;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+.container {
+  /* max-width: 380px; */
+  width:500px;
+  margin: 80px auto;
+  padding: 50px;
+  background: #CDE3EB;   
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.title{
+  text-align: center;
+  margin-bottom: 20px;
+  margin-top: 0px;
+  color: #143A52;
+}
+
+.form-group {
+  margin-bottom: 18px;
+}
+
+
+label {
+  display: block;
+  margin-top: 10px;
+  margin-bottom: 2px;
+  font-weight: 500;
+  color: #143A52;
+}
+
+input{
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #6E828A;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #E3EFF3; 
+  color: #143A52;
+  outline: none;
+}
+
+input:focus{
+  border-color: #143A52;
+  box-shadow: 0 0 4px rgba(20, 58, 82, 0.4);
+}
+
+.button-group {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 30px;
+  gap: 50px;
+}
+
+button {
+  width: 300px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #143A52;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+button:hover:not(:disabled) {
+  background: #0E2B3D;
+}
+
+button:disabled {
+  background: #6E828A;
+}
+
+.cancel-btn {
+  background: #E3EFF3;
+  color: #143A52;
+}
+
+.cancel-btn:hover {
+  background: #6E828A;
+  color: white;
+}
+
+.error-text {
+  color: red;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
