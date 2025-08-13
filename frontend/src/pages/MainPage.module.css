@@ -1,15 +1,24 @@
+.body{
+  background-color: #143A52;
+}
 .container {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
-  background: linear-gradient(to right, #FFE3E1, #FFC7C7);
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  font-family: "Ancizar Sans", sans-serif;
+  font-family: "Ancizar Sans", sans-serif;  
+
+  width:500px;
+  margin: 180px auto;
+  margin-top: 200px;
+  padding: 50px;
+  background: #CDE3EB;   
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
 }
 
-.box {
-  background: #F8E8EE;
+/* .box {
+  background: #CDE3EB;
   padding: 80px;
   border-radius: 16px;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
@@ -18,7 +27,7 @@
   width: 90%;
   border: 2px solid black;
   margin: 0 auto;
-}
+} */
 
 .title {
   font-size: 2rem;

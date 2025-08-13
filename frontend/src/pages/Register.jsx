@@ -91,7 +91,7 @@ export default function Register() {
 
     try {
       await api.post("/api/auth/register", payload);
-      navigate("/api/homepage");
+      navigate("/api/auth/login");
     } catch (err) {
       setError(err.response?.data?.message || "Registration failed");
     } finally {
