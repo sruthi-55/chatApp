@@ -1,5 +1,6 @@
 const pool = require("../utils/db");
 
+// find user by username or email
 async function findUserByUsernameOrEmail(usernameOrEmail) {
   const client = await pool.connect();    // gets a connection from pool
   try {
@@ -11,6 +12,7 @@ async function findUserByUsernameOrEmail(usernameOrEmail) {
   }
 }
 
+// check if user exists by username or email
 async function checkUserExists(username, email) {
   const client = await pool.connect();
   try {
@@ -22,6 +24,8 @@ async function checkUserExists(username, email) {
   }
 }
 
+
+// create user
 async function createUser(userObj) {
   const client = await pool.connect();
   try {

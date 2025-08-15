@@ -9,7 +9,6 @@ import Sidebar from "../component/Sidebar";
 export default function Homepage() {
   const [sidebarWidth, setSidebarWidth] = useState(70); // px
   const [chatListWidth, setChatListWidth] = useState(280); // px
-  const isResizingSidebar = useRef(false);
   const isResizingChatList = useRef(false);
 
   // resizing
@@ -27,9 +26,11 @@ export default function Homepage() {
 
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  
+  
   const [activeChat, setActiveChat] = useState(null);
   const [selectedSection, setSelectedSection] = useState("allChats");
-  const [viewingUser, setViewingUser] = useState(null);    // for profile view in chat window
+  const [viewingUser, setViewingUser] = useState(null);     // for profile view in chat window
 
   // get token and set cur user
   useEffect(() => {
@@ -49,8 +50,18 @@ export default function Homepage() {
 
   const chats = [
     { id: 1, name: "John Doe", lastMessage: "Hey there!", type: "friend" },
-    { id: 2, name: "Jane Smith", lastMessage: "How's it going?", type: "friend" },
-    { id: 3, name: "Alex Brown", lastMessage: "Let's meet tomorrow.", type: "group" },
+    {
+      id: 2,
+      name: "Jane Smith",
+      lastMessage: "How's it going?",
+      type: "friend",
+    },
+    {
+      id: 3,
+      name: "Alex Brown",
+      lastMessage: "Let's meet tomorrow.",
+      type: "group",
+    },
   ];
   const allChats = chats;
   const friendsChats = chats.filter((chat) => chat.type === "friend");
@@ -59,7 +70,7 @@ export default function Homepage() {
 
   const handleSectionChange = (section) => {
     setSelectedSection(section);
-    setViewingUser(null);       // close profile when switching sections
+    setViewingUser(null);     // close profile when switching sections
 
     if (section === "allChats") return;
 
@@ -76,15 +87,14 @@ export default function Homepage() {
 
   const handleViewUserProfile = (user) => {
     setViewingUser(user);
-    setActiveChat(null);      // clear chat when profile is open
+    setActiveChat(null);    // clear chat when profile is open
   };
 
   return (
     <div
       className={styles.container}
       onMouseMove={resize}
-      onMouseUp={stopResizing}
-    >
+      onMouseUp={stopResizing}>
       <Sidebar
         user={user}
         setSelectedSection={handleSectionChange}
@@ -95,20 +105,19 @@ export default function Homepage() {
         <>
           <aside
             className={styles.chatList}
-            style={{ width: `${chatListWidth}px` }}
-          >
+            style={{ width: `${chatListWidth}px` }}>
             <ChatsListSection
               chats={selectedSection === "allChats" ? allChats : friendsChats}
               activeChat={activeChat}
-              setActiveChat={setActiveChat}
+              setActiveChat={(chat) => {
+                setActiveChat(chat);
+                setViewingUser(null);     // clear user profile when a chat is clicked
+              }}
               isFriendsSection={selectedSection === "friendsChat"}
               onSearchUserClick={handleViewUserProfile}
             />
           </aside>
-          <div
-            className={styles.resizer}
-            onMouseDown={startResizingChatList}
-          />
+          <div className={styles.resizer} onMouseDown={startResizingChatList} />
           <ChatWindow
             activeChat={activeChat}
             viewingUser={viewingUser}

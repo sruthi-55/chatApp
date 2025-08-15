@@ -38,12 +38,18 @@
   color: white;
 }
 
+/* --- Search bar --- */
 .searchContainer{
   padding: 10px 16px;
   border-bottom: 2px solid white;
+  position: sticky;   /* keep search bar fixed at top of list */
+  top: 0;
+  z-index: 3;         /* above list items */
+  background-color: #213448;
 }
+
 .serachUserInput{
-  width: 50%;
+  width: 100%;
   padding: 10px 16px;
   font-weight: 500;
   font-size: 15px;
@@ -51,15 +57,66 @@
   margin-right: 10px;
   border-radius: 5px;
 }
-.searchUserBtn{
-  background-color: #6E828A;
-  width: 45%;
-  padding: 10px 16px;
-  border: none;
+
+/* --- Overlay dropdown anchored to search bar --- */
+.chatListSection {
+  position: relative;        /* containing block for absolute overlay if needed */
+}
+
+.searchOverlay {
+  position: absolute;
+  top: 60px; /* adjust based on input height */
+  left: 0;
+  width: 100%;
+  max-height: 300px;
+  overflow-y: auto;
+  background-color: #213448;
+  border: 1px solid #6E828A;
+  border-radius: 8px;
+  z-index: 100;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.searchResult {
+  padding: 10px;
+  background-color: #112D4E;
   border-radius: 5px;
+  cursor: pointer;
+}
+
+.searchResult:hover {
+  background-color: #143A52;
+}
+
+.resultMain {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.resultName {
+  color: white;
+  font-weight: 500;
+}
+
+.resultId {
+  color: #ccc;
+  font-size: 12px;
+}
+
+.closeOverlayBtn {
+  padding: 6px 12px;
+  border-radius: 5px;
+  background-color: #6E828A;
   color: white;
   font-weight: 500;
   cursor: pointer;
-  font-size: 15px;
-  margin-bottom: 10px;
+  margin-top: 5px;
+}
+
+.closeOverlayBtn:hover {
+  background-color: #5d727a;
 }

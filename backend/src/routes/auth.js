@@ -12,7 +12,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 router.post("/register", async (req, res) => {
   const client = await pool.connect();
   try {
-    const { username, email, password, fullName, phone, avatar, bio, gender } =
+    const { username, email, password, full_name, phone, avatar, bio, gender } =
       req.body;
 
     if (!username || !email || !password) {
@@ -34,7 +34,7 @@ router.post("/register", async (req, res) => {
       username,
       email,
       hashedPassword,
-      fullName,
+      full_name,
       phone,
       avatar,
       bio,
@@ -83,7 +83,7 @@ router.post("/login", async (req, res) => {
         id: user.id,
         username: user.username,
         email: user.email,
-        fullName: user.full_name,
+        full_name: user.full_name,
         phone: user.phone,
         avatar: user.avatar,
         bio: user.bio,

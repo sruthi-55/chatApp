@@ -8,29 +8,43 @@ export default function ChatWindow({ activeChat, viewingUser, setViewingUser }) 
   if (viewingUser) {
     return (
       <main className={styles.chatWindow}>
-        <div className={styles.chatHeader}>
-          <div className={styles.chatName}>{viewingUser.name}</div>
-          <div className={styles.lastSeen}>User ID: {viewingUser.id}</div>
-        </div>
-        <div className={styles.section}>
-          <p>Email: {viewingUser.email}</p>
-          <button
-            onClick={async () => {
-              try {
-                await api.post(`/api/friends/request`, {
-                  toUserId: viewingUser.id,
-                });
-                alert("Friend request sent!");
-              } catch {
-                alert("Failed to send request");
-              }
-            }}
-          >
-            Add Friend
-          </button>
-        </div>
-        <div>
-          <button onClick={() => setViewingUser(null)}>Back</button>
+        <div className={styles.searchResSection}>
+          {/* User Avatar and Name */}
+          <div className={styles.profileHeader}>
+            <img
+              src={viewingUser.avatar || "/defaultUserProfile.png"}
+              alt={viewingUser.username}
+              className={styles.profileAvatar}
+            />
+            <h2>{viewingUser.username}</h2>
+          </div>
+
+          {/* User details */}
+          <div className={styles.profileDetails}>
+            {viewingUser.full_name && <p>Full Name: {viewingUser.full_name}</p>}
+            <p>Email: {viewingUser.email}</p>
+            {viewingUser.bio && <p>Bio: {viewingUser.bio}</p>}
+          </div>
+
+          {/* Action buttons */}
+          <div className={styles.profileActions}>
+            {/* not working as of now */}
+            <button
+              onClick={async () => {
+                try {
+                  await api.post(`/api/friends/request`, {
+                    toUserId: viewingUser.id,
+                  });
+                  alert("Friend request sent!");
+                } catch {
+                  alert("Failed to send request");
+                }
+              }}
+            >
+              Add Friend
+            </button>
+            <button onClick={() => setViewingUser(null)}>Back</button>
+          </div>
         </div>
       </main>
     );
@@ -44,6 +58,7 @@ export default function ChatWindow({ activeChat, viewingUser, setViewingUser }) 
   // if in a chat
   return (
     <main className={styles.chatWindow}>
+      {/* Chat header */}
       <div className={styles.chatHeader}>
         <div>
           <div className={styles.chatName}>{activeChat.name}</div>
@@ -54,11 +69,14 @@ export default function ChatWindow({ activeChat, viewingUser, setViewingUser }) 
           <img src={MoreIcon} alt="More" className={styles.icon} />
         </div>
       </div>
+
+      {/* Chat messages */}
       <div className={styles.messages}>
         <div className={`${styles.message} ${styles.received}`}>Hello!</div>
         <div className={`${styles.message} ${styles.sent}`}>Hi there!</div>
       </div>
 
+      {/* Message input */}
       <div className={styles.messageInput}>
         <input type="text" placeholder="Type a message..." />
         <button>Send</button>
