@@ -208,13 +208,13 @@ export default function Register() {
       </div>
 
       <div className={styles["button-group"]}>
-        <button type="submit" disabled={loading}>
+        <button className={styles.button} type="submit" disabled={loading}>
           {loading ? "Registering in..." : "Register"}
         </button>
         <button
           type="reset"
           onClick={handleReset}
-          className={styles["cancel-btn"]}>
+          className={`${styles.button} ${styles["cancel-btn"]}`}>
           Cancel
         </button>
       </div>

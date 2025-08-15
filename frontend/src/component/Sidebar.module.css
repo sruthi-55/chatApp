@@ -1,0 +1,42 @@
+.sidebar {
+  width: 10%;
+  background-color: #143A52;
+  border-right: 1px solid #DBE2EF;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.profileIcons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem 0;
+  gap: 24px;
+}
+
+
+.bottomIcons{
+  margin-top: auto; 
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-bottom: 15px;
+}
+
+.avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 3px solid black;
+  margin-bottom: 10px;
+}
+
+.icon {
+  width: 40px;
+  height: 40px;
+  /* font-size: 1.5rem; */
+  cursor: pointer;
+  margin-bottom: 15px;
+  /* border: 2px solid white; */
+}

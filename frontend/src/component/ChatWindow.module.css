@@ -1,0 +1,104 @@
+.chatWindow {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.chatHeader {
+  padding: 20px;
+  background-color: #112D4E;
+  border-bottom: 1px solid #ccc;
+  /* font-weight: bold; */
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chatName{
+  font-size: 30px;
+}
+.lastSeen{
+  font-size: 15px;
+  margin-top: 5px;
+  color: gray;
+}
+
+.headerIcons{
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  font-size: 18px;
+  cursor: pointer;
+}
+.messages {
+  color: black;
+  flex: 1;
+  padding: 25px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px; 
+}
+
+.message {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  display: inline-block;        
+  max-width: 60%;              
+  word-wrap: break-word;        
+}
+
+.received {
+  background-color: #CDE3EB;   
+  align-self: flex-start;      
+  color: black;
+}
+
+.sent {
+  background-color: #6E828A;   
+  align-self: flex-end;         
+  color: white;                 
+}
+
+.messageInput {
+  display: flex;
+  padding: 20px;
+  border-top: 1px solid #CDE3EB;
+  background-color: #CDE3EB;
+  gap: 20px;
+  justify-content: left;
+  align-items: last baseline;
+}
+
+.messageInput input {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  margin-right: 0.5rem;
+}
+
+.messageInput button {
+  /* flex: 0.25; */
+  padding: 10px 0px;
+  background-color: #143A52;
+  color: white;
+  border: none;
+  width: 200px;
+  border-radius: 8px;
+}
+
+.noChatSelected {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #777;
+}
+
+.headerIcons img {
+  margin-top: 10px;
+  width: 30px;  /* smaller than sidebar icons */
+  height: 30px;
+}

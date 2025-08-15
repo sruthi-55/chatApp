@@ -99,7 +99,7 @@ textarea {
   gap: 50px;
 }
 
-button {
+.button {
   width: 300px;
   padding: 10px 16px;
   border: none;
@@ -112,11 +112,11 @@ button {
   font-weight: 500;
 }
 
-button:hover:not(:disabled) {
+.button:hover:not(:disabled) {
   background: #0E2B3D;
 }
 
-button:disabled {
+.button:disabled {
   background: #6E828A;
 }
 

@@ -1,0 +1,65 @@
+.chatList {
+  width: 28%;
+  background-color: #213448;
+  border-right: 2px solid #DBE2EF;
+  overflow-y: auto;
+}
+
+.chatItem {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+}
+
+.chatItem:hover {
+  background-color: #112D4E;
+}
+
+.activeChat {
+  background-color: #112D4E;
+}
+
+/* .chatAvatar {
+  font-size: 2rem;
+  margin-right: 0.8rem;
+} */
+
+.chatInfo {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.chatLastMssg {
+  color: #555;
+}
+.chatName{
+  color: white;
+}
+
+.searchContainer{
+  padding: 10px 16px;
+  border-bottom: 2px solid white;
+}
+.serachUserInput{
+  width: 50%;
+  padding: 10px 16px;
+  font-weight: 500;
+  font-size: 15px;
+  margin: 10px 0px;
+  margin-right: 10px;
+  border-radius: 5px;
+}
+.searchUserBtn{
+  background-color: #6E828A;
+  width: 45%;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 5px;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 15px;
+  margin-bottom: 10px;
+}

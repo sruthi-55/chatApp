@@ -80,10 +80,10 @@ export default function Login() {
       </div>
 
       <div className={styles["button-group"]}>
-        <button type="submit" disabled={loading}>
+        <button className={styles.button} type="submit" disabled={loading}>
           {loading ? 'Logging in...' : 'Login'}
         </button>
-        <button type="reset" onClick={handleReset} className={styles["cancel-btn"]}>Cancel</button>
+        <button type="reset" onClick={handleReset} className={`${styles.button} ${styles["cancel-btn"]}`}>Cancel</button>
       </div>
     </form>
   );
