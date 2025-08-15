@@ -36,7 +36,7 @@ export default function Login() {
     setError('');
 
     try {
-      const res = await api.post('/api/auth/login', loginData);
+      const res = await api.post('/auth/login', loginData);
       localStorage.setItem('token', res.data.token);
       navigate('/api/homepage');
     } catch (err) {

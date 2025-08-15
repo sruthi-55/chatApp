@@ -1,9 +1,29 @@
+import { useState } from "react";
 import styles from "./ChatWindow.module.css";
 import SearchIcon from "../assets/icons/search.svg";
 import MoreIcon from "../assets/icons/more.svg";
 import api from "../api/axios";
 
-export default function ChatWindow({ activeChat, viewingUser, setViewingUser }) {
+export default function ChatWindow({ activeChat, chatMessages, user, viewingUser, setViewingUser, setChatMessages }) {
+  const [newMessage, setNewMessage] = useState("");   // local input state
+
+  // send message
+  const handleSendMessage = async () => {
+    if (!newMessage.trim()) return; // don’t send empty msg
+
+    try {
+      const res = await api.post(`/chats/${activeChat.id}/messages`, {
+        content: newMessage,
+      });
+
+      // append new message to chatMessages state
+      setChatMessages((prev) => [...prev, res.data]);
+      setNewMessage(""); // clear input
+    } catch (err) {
+      console.error("Send message error:", err);
+    }
+  };
+
   // if viewing a user profile
   if (viewingUser) {
     return (
@@ -72,14 +92,26 @@ export default function ChatWindow({ activeChat, viewingUser, setViewingUser }) 
 
       {/* Chat messages */}
       <div className={styles.messages}>
-        <div className={`${styles.message} ${styles.received}`}>Hello!</div>
-        <div className={`${styles.message} ${styles.sent}`}>Hi there!</div>
+        {chatMessages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`${styles.message} ${msg.sender_id === user.id ? styles.sent : styles.received}`}
+          >
+            {msg.content}
+          </div>
+        ))}
       </div>
 
       {/* Message input */}
       <div className={styles.messageInput}>
-        <input type="text" placeholder="Type a message..." />
-        <button>Send</button>
+        <input
+          type="text"
+          placeholder="Type a message..."
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSendMessage()} // send on Enter
+        />
+        <button onClick={handleSendMessage}>Send</button>
       </div>
     </main>
   );

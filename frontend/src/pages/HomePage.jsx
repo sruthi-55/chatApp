@@ -7,7 +7,7 @@ import ChatWindow from "../component/ChatWindow";
 import Sidebar from "../component/Sidebar";
 
 export default function Homepage() {
-  const [sidebarWidth, setSidebarWidth] = useState(70); // px
+  const [sidebarWidth] = useState(70); // px
   const [chatListWidth, setChatListWidth] = useState(280); // px
   const isResizingChatList = useRef(false);
 
@@ -26,11 +26,12 @@ export default function Homepage() {
 
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
-  
-  
+
+  const [chats, setChats] = useState([]); // all chats fetched from DB
   const [activeChat, setActiveChat] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]); // messages of active chat
   const [selectedSection, setSelectedSection] = useState("allChats");
-  const [viewingUser, setViewingUser] = useState(null);     // for profile view in chat window
+  const [viewingUser, setViewingUser] = useState(null); // for profile view in chat window
 
   // get token and set cur user
   useEffect(() => {
@@ -39,30 +40,55 @@ export default function Homepage() {
       navigate("/login");
       return;
     }
-    api.get("/api/user/me", {
+    api
+      .get("/user/me", {
         headers: { Authorization: `Bearer ${token}` },
       })
-      .then((res) => setUser(res.data))
+      .then((res) => {
+        console.log("Current user from /user/me:", res.data); // 🔍 debug
+        setUser(res.data);
+      })
       .catch(() => navigate("/login"));
   }, [navigate]);
 
+  // fetch chats for logged-in user
+  useEffect(() => {
+    if (!user) return;
+    api
+      .get("/chats")
+      .then((res) => {
+        const chatsData = res.data.map((chat) => {
+          let chatName = chat.is_group
+            ? chat.name
+            : `Chat with ${chat.memberids.find((id) => id !== user.id)}`;
+
+          return {
+            id: chat.id,
+            name: chatName,
+            lastMessage: chat.last_message_content || "",
+            type: chat.is_group ? "group" : "friend",
+          };
+        });
+        setChats(chatsData);
+      })
+      .catch((err) => console.error("Failed to fetch chats:", err));
+  }, [user]);
+
+  // fetch messages whenever activeChat changes
+  useEffect(() => {
+    if (!activeChat) return;
+    const token = localStorage.getItem("token");
+
+    api
+      .get(`/chats/${activeChat.id}/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((res) => setChatMessages(res.data))
+      .catch((err) => console.error("Failed to fetch messages:", err));
+  }, [activeChat]);
+
   if (!user) return <p>Loading...</p>;
 
-  const chats = [
-    { id: 1, name: "John Doe", lastMessage: "Hey there!", type: "friend" },
-    {
-      id: 2,
-      name: "Jane Smith",
-      lastMessage: "How's it going?",
-      type: "friend",
-    },
-    {
-      id: 3,
-      name: "Alex Brown",
-      lastMessage: "Let's meet tomorrow.",
-      type: "group",
-    },
-  ];
   const allChats = chats;
   const friendsChats = chats.filter((chat) => chat.type === "friend");
 
@@ -70,7 +96,7 @@ export default function Homepage() {
 
   const handleSectionChange = (section) => {
     setSelectedSection(section);
-    setViewingUser(null);     // close profile when switching sections
+    setViewingUser(null); // close profile when switching sections
 
     if (section === "allChats") return;
 
@@ -87,7 +113,7 @@ export default function Homepage() {
 
   const handleViewUserProfile = (user) => {
     setViewingUser(user);
-    setActiveChat(null);    // clear chat when profile is open
+    setActiveChat(null); // clear chat when profile is open
   };
 
   return (
@@ -111,7 +137,7 @@ export default function Homepage() {
               activeChat={activeChat}
               setActiveChat={(chat) => {
                 setActiveChat(chat);
-                setViewingUser(null);     // clear user profile when a chat is clicked
+                setViewingUser(null); // clear user profile when a chat is clicked
               }}
               isFriendsSection={selectedSection === "friendsChat"}
               onSearchUserClick={handleViewUserProfile}
@@ -120,6 +146,9 @@ export default function Homepage() {
           <div className={styles.resizer} onMouseDown={startResizingChatList} />
           <ChatWindow
             activeChat={activeChat}
+            chatMessages={chatMessages} // pass real messages
+            setChatMessages={setChatMessages}
+            user={user} // current user for sent/received
             viewingUser={viewingUser}
             setViewingUser={setViewingUser}
           />

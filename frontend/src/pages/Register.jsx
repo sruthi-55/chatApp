@@ -90,8 +90,8 @@ export default function Register() {
       const payload = { ...formData, avatar: avatarUrl };
 
     try {
-      await api.post("/api/auth/register", payload);
-      navigate("/api/auth/login");
+      await api.post("/auth/register", payload);
+      navigate("/auth/login");
     } catch (err) {
       setError(err.response?.data?.message || "Registration failed");
     } finally {

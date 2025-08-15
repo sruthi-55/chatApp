@@ -27,11 +27,13 @@ app.get('/', (req, res) => {
 //3. import routes
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user');
+const chatRoutes = require('./routes/chat');
 
 //4. mounts the router
 // requests for '/api/auth' are forwarded to the authRoutes router
 app.use('/api/auth', authRoutes);     // all routes here will be prefixed with /api/auth
 app.use('/api/user', userRoutes);
+app.use('/api/chats', chatRoutes);
 
 
 //5. export configured express app
