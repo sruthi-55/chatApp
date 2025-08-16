@@ -1,16 +1,36 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import styles from "./ChatWindow.module.css";
 import SearchIcon from "../assets/icons/search.svg";
 import MoreIcon from "../assets/icons/more.svg";
 import api from "../api/axios";
 
-export default function ChatWindow({ activeChat, chatMessages, user, viewingUser, setViewingUser, setChatMessages }) {
-  const [newMessage, setNewMessage] = useState("");   // local input state
-  const [friendRequestSent, setFriendRequestSent] = useState(false); // disable after send
+export default function ChatWindow({
+  activeChat,
+  chatMessages,
+  user,
+  viewingUser,
+  setViewingUser,
+  setChatMessages,
+  socket,
+}) {
+  const [newMessage, setNewMessage] = useState("");
+  const [friendRequestSent, setFriendRequestSent] = useState(false);
+  const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
 
-  // send message
+  // scroll to bottom helper
+  const scrollToBottom = (behavior = "auto") => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  };
+
+  // scroll to bottom on initial load
+  useEffect(() => {
+    scrollToBottom("auto");
+  }, [chatMessages]);
+
+  // handle sending a new message
   const handleSendMessage = async () => {
-    if (!newMessage.trim()) return; // don’t send empty msg
+    if (!newMessage.trim()) return;
 
     try {
       const res = await api.post(`/chats/${activeChat.id}/messages`, {
@@ -18,18 +38,52 @@ export default function ChatWindow({ activeChat, chatMessages, user, viewingUser
       });
 
       setChatMessages((prev) => [...prev, res.data]);
-      setNewMessage(""); // clear input
+      setNewMessage("");
+      scrollToBottom("smooth");
+
+      // send via socket
+      socket?.emit("sendMessage", { ...res.data, chat_id: activeChat.id });
     } catch (err) {
       console.error("Send message error:", err);
     }
   };
 
-  // if viewing a user profile
+  // handle infinite scroll for older messages
+  const handleScroll = async (e) => {
+    if (e.target.scrollTop === 0 && chatMessages.length) {
+      const token = localStorage.getItem("token");
+      const oldestMessageId = chatMessages[0].id;
+
+      try {
+        const res = await api.get(
+          `/chats/${activeChat.id}/messages?before=${oldestMessageId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        if (res.data.length > 0) {
+          // prepend older messages and keep scroll at same position
+          const container = messagesContainerRef.current;
+          const scrollHeightBefore = container.scrollHeight;
+
+          setChatMessages((prev) => [...res.data.reverse(), ...prev]);
+
+          // adjust scroll so user stays at the same position
+          setTimeout(() => {
+            const scrollHeightAfter = container.scrollHeight;
+            container.scrollTop = scrollHeightAfter - scrollHeightBefore;
+          }, 0);
+        }
+      } catch (err) {
+        console.error("Failed to load older messages:", err);
+      }
+    }
+  };
+
+  // view user profile
   if (viewingUser) {
     return (
       <main className={styles.chatWindow}>
         <div className={styles.searchResSection}>
-          {/* User Avatar and Name */}
           <div className={styles.profileHeader}>
             <img
               src={viewingUser.avatar || "/defaultUserProfile.png"}
@@ -39,14 +93,12 @@ export default function ChatWindow({ activeChat, chatMessages, user, viewingUser
             <h2>{viewingUser.username}</h2>
           </div>
 
-          {/* User details */}
           <div className={styles.profileDetails}>
             {viewingUser.full_name && <p>Full Name: {viewingUser.full_name}</p>}
             <p>Email: {viewingUser.email}</p>
             {viewingUser.bio && <p>Bio: {viewingUser.bio}</p>}
           </div>
 
-          {/* Action buttons */}
           <div className={styles.profileActions}>
             <button
               onClick={async () => {
@@ -54,21 +106,20 @@ export default function ChatWindow({ activeChat, chatMessages, user, viewingUser
                   const token = localStorage.getItem("token");
                   await api.post(
                     `/friends/request`,
-                    { receiver_id: viewingUser.id }, // correct field
+                    { receiver_id: viewingUser.id },
                     { headers: { Authorization: `Bearer ${token}` } }
                   );
-                  setFriendRequestSent(true); // disable button
+                  setFriendRequestSent(true);
                   alert("Friend request sent!");
                 } catch (err) {
                   console.error("Friend request error:", err);
                   alert("Failed to send request");
                 }
               }}
-              disabled={friendRequestSent} // disable after send
+              disabled={friendRequestSent}
             >
               {friendRequestSent ? "Request Sent" : "Add Friend"}
             </button>
-
             <button onClick={() => setViewingUser(null)}>Back</button>
           </div>
         </div>
@@ -76,15 +127,14 @@ export default function ChatWindow({ activeChat, chatMessages, user, viewingUser
     );
   }
 
-  // if no active chat
-  if (!activeChat) {
+  // no active chat
+  if (!activeChat)
     return <div className={styles.noChatSelected}>Select a chat to start messaging</div>;
-  }
 
-  // if in a chat
+  // active chat
   return (
     <main className={styles.chatWindow}>
-      {/* Chat header */}
+      {/* chat header */}
       <div className={styles.chatHeader}>
         <div>
           <div className={styles.chatName}>{activeChat.name}</div>
@@ -96,19 +146,26 @@ export default function ChatWindow({ activeChat, chatMessages, user, viewingUser
         </div>
       </div>
 
-      {/* Chat messages */}
-      <div className={styles.messages}>
+      {/* chat messages */}
+      <div
+        className={styles.messages}
+        onScroll={handleScroll}
+        ref={messagesContainerRef}
+      >
         {chatMessages.map((msg) => (
           <div
             key={msg.id}
-            className={`${styles.message} ${msg.sender_id === user.id ? styles.sent : styles.received}`}
+            className={`${styles.message} ${
+              msg.sender_id === user.id ? styles.sent : styles.received
+            }`}
           >
             {msg.content}
           </div>
         ))}
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Message input */}
+      {/* input */}
       <div className={styles.messageInput}>
         <input
           type="text"

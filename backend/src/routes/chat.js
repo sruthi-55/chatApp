@@ -1,7 +1,7 @@
 const express = require("express");
 const authMiddleware = require("../middleware/auth");
 const { getUserChats, createMessage } = require("../models/Chat");
-const {getMessagesByChatId} = require("../models/Message")
+const { getMessagesByChatId } = require("../models/Message");
 
 const router = express.Router();
 
@@ -16,11 +16,16 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
-// get messages of a chat
+// get messages of a chat with optional pagination
 router.get("/:chatId/messages", authMiddleware, async (req, res) => {
   try {
     const { chatId } = req.params;
-    const messages = await getMessagesByChatId(chatId);
+    const { limit = 20, before } = req.query;
+const messages = await getMessagesByChatId(
+  chatId,
+  parseInt(limit) || 20,
+  before ? parseInt(before) : undefined
+);
     res.json(messages);
   } catch (err) {
     console.error("Get chat messages error:", err);
@@ -33,7 +38,8 @@ router.post("/:chatId/messages", authMiddleware, async (req, res) => {
   try {
     const { chatId } = req.params;
     const { content } = req.body;
-    if (!content) return res.status(400).json({ message: "Message content required" });
+    if (!content)
+      return res.status(400).json({ message: "Message content required" });
 
     const message = await createMessage(chatId, req.userId, content);
     res.status(200).json(message);

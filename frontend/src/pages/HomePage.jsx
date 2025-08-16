@@ -6,7 +6,8 @@ import styles from "./Homepage.module.css";
 import ChatsListSection from "../component/ChatsListSection";
 import ChatWindow from "../component/ChatWindow";
 import Sidebar from "../component/Sidebar";
-import RequestsSection from "../component/RequestsSection"; // new import
+import RequestsSection from "../component/RequestsSection";
+import { io } from "socket.io-client";
 
 export default function Homepage() {
   const [sidebarWidth] = useState(70);
@@ -16,7 +17,8 @@ export default function Homepage() {
   const startResizingChatList = () => (isResizingChatList.current = true);
   const stopResizing = () => (isResizingChatList.current = false);
   const resize = (e) => {
-    if (isResizingChatList.current) setChatListWidth(Math.max(250, e.clientX - sidebarWidth));
+    if (isResizingChatList.current)
+      setChatListWidth(Math.max(250, e.clientX - sidebarWidth));
   };
 
   const navigate = useNavigate();
@@ -26,11 +28,13 @@ export default function Homepage() {
   const [chatMessages, setChatMessages] = useState([]);
   const [selectedSection, setSelectedSection] = useState("allChats");
   const [viewingUser, setViewingUser] = useState(null);
+  const socket = useRef(null);
 
   // fetch current user
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) return navigate("/login");
+
     api
       .get("/user/me", { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => setUser(res.data))
@@ -56,14 +60,52 @@ export default function Homepage() {
       .catch((err) => console.error("Failed to fetch chats:", err));
   }, [user]);
 
+  // init socket connection
+  useEffect(() => {
+    if (!user) return;
+    socket.current = io("http://localhost:5001", {
+  withCredentials: true, // required if backend uses credentials
+});
+
+    socket.current.on("connect", () =>
+      console.log("Socket connected:", socket.current.id)
+    );
+
+    // receive new message
+    socket.current.on("newMessage", (message) => {
+      if (message.chat_id === activeChat?.id) {
+        setChatMessages((prev) => [...prev, message]);
+      }
+      // update lastMessage in chat list
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.id === message.chat_id
+            ? { ...chat, lastMessage: message.content }
+            : chat
+        )
+      );
+    });
+
+    return () => {
+      socket.current.disconnect();
+    };
+  }, [user, activeChat]);
+
   // fetch messages for active chat
   useEffect(() => {
     if (!activeChat) return;
+
     const token = localStorage.getItem("token");
+
     api
-      .get(`/chats/${activeChat.id}/messages`, { headers: { Authorization: `Bearer ${token}` } })
+      .get(`/chats/${activeChat.id}/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
       .then((res) => setChatMessages(res.data))
       .catch((err) => console.error("Failed to fetch messages:", err));
+
+    // join chat room for real-time messages
+    socket.current?.emit("joinRoom", activeChat.id);
   }, [activeChat]);
 
   if (!user) return <p>Loading...</p>;
@@ -75,6 +117,7 @@ export default function Homepage() {
   const handleSectionChange = (section) => {
     setSelectedSection(section);
     setViewingUser(null);
+
     if (section === "friendsChat" && !friendsChats.some((chat) => chat.id === activeChat?.id)) {
       setActiveChat(null);
     } else if (!["allChats", "friendsChat"].includes(section)) {
@@ -113,6 +156,7 @@ export default function Homepage() {
             user={user}
             viewingUser={viewingUser}
             setViewingUser={setViewingUser}
+            socket={socket.current}
           />
         </>
       ) : (
@@ -120,7 +164,7 @@ export default function Homepage() {
           {selectedSection === "profile" && <div className={styles.section}>Profile content here</div>}
           {selectedSection === "requests" && (
             <div className={styles.section}>
-              <RequestsSection /> {/* Render friend requests with its own styles */}
+              <RequestsSection />
             </div>
           )}
           {selectedSection === "rooms" && <div className={styles.section}>Rooms list here</div>}

@@ -2,7 +2,7 @@ const http = require('http');       // node's built-in http module
 const app = require('./index');     // express app
 const { Server } = require('socket.io');    
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // convert express app to http server
 const server = http.createServer(app);
@@ -13,22 +13,26 @@ const server = http.createServer(app);
 // attaches Socket.IO to http server
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:5173", // frontend
+    origin: "http://localhost:5173", // your frontend
     methods: ["GET", "POST"],
     credentials: true,
-  }
+  },
 });
 
 // handle real-time client connections
-io.on('connection', (socket) => {
-  // runs every time a new client connects to your Socket.IO server
-  // socket - individual connection obj for that client
-  console.log('New client connected:', socket.id);
+io.on("connection", (socket) => {
+  console.log("New client connected:", socket.id);
 
-  // runs when a client disconnects
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+  socket.on("joinRoom", (chatId) => {
+    socket.join(chatId); // join chat room
   });
+
+  socket.on("sendMessage", (message) => {
+    // broadcast only to room members
+    socket.to(message.chat_id).emit("newMessage", message);
+  });
+
+  socket.on("disconnect", () => console.log("Client disconnected:", socket.id));
 });
 
 server.listen(PORT, () => {
