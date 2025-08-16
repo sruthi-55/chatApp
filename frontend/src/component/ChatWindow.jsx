@@ -6,6 +6,7 @@ import api from "../api/axios";
 
 export default function ChatWindow({ activeChat, chatMessages, user, viewingUser, setViewingUser, setChatMessages }) {
   const [newMessage, setNewMessage] = useState("");   // local input state
+  const [friendRequestSent, setFriendRequestSent] = useState(false); // disable after send
 
   // send message
   const handleSendMessage = async () => {
@@ -16,7 +17,6 @@ export default function ChatWindow({ activeChat, chatMessages, user, viewingUser
         content: newMessage,
       });
 
-      // append new message to chatMessages state
       setChatMessages((prev) => [...prev, res.data]);
       setNewMessage(""); // clear input
     } catch (err) {
@@ -48,21 +48,27 @@ export default function ChatWindow({ activeChat, chatMessages, user, viewingUser
 
           {/* Action buttons */}
           <div className={styles.profileActions}>
-            {/* not working as of now */}
             <button
               onClick={async () => {
                 try {
-                  await api.post(`/api/friends/request`, {
-                    toUserId: viewingUser.id,
-                  });
+                  const token = localStorage.getItem("token");
+                  await api.post(
+                    `/friends/request`,
+                    { receiver_id: viewingUser.id }, // correct field
+                    { headers: { Authorization: `Bearer ${token}` } }
+                  );
+                  setFriendRequestSent(true); // disable button
                   alert("Friend request sent!");
-                } catch {
+                } catch (err) {
+                  console.error("Friend request error:", err);
                   alert("Failed to send request");
                 }
               }}
+              disabled={friendRequestSent} // disable after send
             >
-              Add Friend
+              {friendRequestSent ? "Request Sent" : "Add Friend"}
             </button>
+
             <button onClick={() => setViewingUser(null)}>Back</button>
           </div>
         </div>
@@ -109,7 +115,7 @@ export default function ChatWindow({ activeChat, chatMessages, user, viewingUser
           placeholder="Type a message..."
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSendMessage()} // send on Enter
+          onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
         />
         <button onClick={handleSendMessage}>Send</button>
       </div>

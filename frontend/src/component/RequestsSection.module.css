@@ -1,0 +1,112 @@
+.requestsSectionWrapper {
+  display: flex;
+  justify-content: center; /* centers horizontally */
+  width: 100%;
+  padding: 40px 0; /* optional top/bottom spacing */
+}
+
+.requestsSection {
+  width: 800px; /* fixed width */
+  padding: 20px;
+  background-color: #0f2c44;
+  color: white;
+  border-radius: 12px;
+  overflow-y: auto;
+  font-family: sans-serif;
+}
+
+.title {
+  font-size: 1.5rem;
+  margin-bottom: 16px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.subTitle {
+  font-size: 1.2rem;
+  margin-top: 40px;
+  margin-bottom: 15px;
+  font-weight: 500;
+  color: #c4c4c4;
+}
+
+.noRequests {
+  font-size: 1rem;
+  color: #c4c4c4;
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.requestItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #143a52;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  transition: background-color 0.2s ease;
+}
+
+.requestItem:hover {
+  background-color: #1b4b6a;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  margin-right: 10px;
+}
+
+.username {
+  flex: 1;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.pending {
+  font-size: 0.9rem;
+  color: #c4c4c4;
+  margin-left: 6px;
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+}
+
+/* Match Homepage UI */
+.btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+/* Accept = light accent blue (#399235 in previous was green, changing to lighter blue) */
+.accept {
+  background-color: #1b4b6a;
+  color: white;
+}
+
+.accept:hover {
+  background-color: #2a5c7c;
+}
+
+/* Reject = slightly darker accent red to match UI */
+.reject {
+  background-color: #c62828; /* can adjust if needed */
+  color: white;
+}
+
+.reject:hover {
+  background-color: #e53935;
+}

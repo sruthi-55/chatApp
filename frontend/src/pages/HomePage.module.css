@@ -16,3 +16,14 @@
   background-color: #aaa;
 }
 
+.fullWidthSection {
+  flex: 1; /* take all remaining horizontal space */
+  display: flex;
+  justify-content: center; /* horizontally center child content like RequestsSection */
+  align-items: flex-start; /* optional: start at top */
+  padding: 20px;
+}
+
+.section{
+  width: 100%;
+}
