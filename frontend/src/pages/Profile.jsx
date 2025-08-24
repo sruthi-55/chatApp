@@ -5,7 +5,7 @@ export default function Profile() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    api.get('/users/me')
+    api.get('/user/me')
       .then(res => setUser(res.data))
       .catch(err => console.error(err));
   }, []);

@@ -1,6 +1,6 @@
 const pool = require("../utils/db");
 
-// fetch all chats for a user along with last message
+//# fetch all chats for a user along with last message
 async function getUserChats(userId) {
   const client = await pool.connect();
   try {
@@ -30,7 +30,7 @@ async function getUserChats(userId) {
 }
 
 
-// fetch messages of a chat
+//# fetch messages of a chat in chronological order
 async function getChatMessages(chatId) {
   const client = await pool.connect();
   try {
@@ -47,7 +47,8 @@ async function getChatMessages(chatId) {
   }
 }
 
-// create a new message
+
+//# create a new message 
 async function createMessage(chatId, senderId, content) {
   const client = await pool.connect();
   try {
@@ -63,4 +64,49 @@ async function createMessage(chatId, senderId, content) {
   }
 }
 
-module.exports = { getUserChats, getChatMessages, createMessage };
+
+//# create/get a direct chat between two users 
+async function createOrGetDirectChat(user1Id, user2Id) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // check if chat already exists with both members
+    const checkSql = `
+      SELECT c.id
+      FROM chats c
+      JOIN chat_members m1 ON c.id = m1.chat_id AND m1.user_id = $1
+      JOIN chat_members m2 ON c.id = m2.chat_id AND m2.user_id = $2
+      WHERE c.is_group = false
+      LIMIT 1
+    `;
+    const checkRes = await client.query(checkSql, [user1Id, user2Id]);
+
+    if (checkRes.rows.length > 0) {
+      await client.query("COMMIT");
+      return checkRes.rows[0]; // existing chat
+    }
+
+    // create chat
+    const insertChat = await client.query(
+      `INSERT INTO chats (is_group) VALUES (false) RETURNING id`
+    );
+    const chatId = insertChat.rows[0].id;
+
+    // add both users as members
+    await client.query(
+      `INSERT INTO chat_members (chat_id, user_id) VALUES ($1, $2), ($1, $3)`,
+      [chatId, user1Id, user2Id]
+    );
+
+    await client.query("COMMIT");
+    return { id: chatId };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { getUserChats, getChatMessages, createMessage, createOrGetDirectChat };

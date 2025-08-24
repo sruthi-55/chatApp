@@ -1,5 +1,19 @@
 import api from "./axios";
 
+// Get all friends for logged-in user
+export const getFriends = async () => {
+  const res = await api.get("/friends");
+  return res.data;
+};
+
+
+
+// Start chat with a friend
+export const startChat = async (friendId) => {
+  const res = await api.post("/chats/start", { friendId });
+  return res.data;
+};
+
 // Get all requests (incoming + outgoing)
 export const fetchFriendRequests = async () => {
   const res = await api.get("/friends/requests");

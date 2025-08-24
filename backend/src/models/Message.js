@@ -1,5 +1,6 @@
 const pool = require("../utils/db");
 
+//# get messages for a specific chat (with pagination support)
 async function getMessagesByChatId(chatId, limit = 20, beforeId) {
   const client = await pool.connect();
   try {
@@ -10,6 +11,7 @@ async function getMessagesByChatId(chatId, limit = 20, beforeId) {
     const parsedLimit = Number(limit) || 20;
     const parsedBeforeId = beforeId ? Number(beforeId) : null;
 
+    // beforeId is useful for pagination (fetch messages older than some ID)
     if (parsedBeforeId) {
       sqlQuery = `
         SELECT m.id, m.content, m.sender_id, m.chat_id, m.created_at,
@@ -35,14 +37,14 @@ async function getMessagesByChatId(chatId, limit = 20, beforeId) {
     }
 
     const res = await client.query(sqlQuery, params);
-    return res.rows.reverse(); // oldest first
+    return res.rows.reverse();      // oldest first
   } finally {
     client.release();
   }
 }
 
 
-
+//# inserts a new message into DB
 async function createMessage(chatId, senderId, content) {
   const client = await pool.connect();
   try {

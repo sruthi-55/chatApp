@@ -8,8 +8,8 @@ export default function MainPage(){
         <h1 className={styles.title}>Welcome to chatApp</h1>
         
         <div className={styles.actions}>
-          <Link to="/api/auth/login" className={styles.btn}>Login</Link>
-          <Link to="/api/auth/register" className={styles.btnSecondary}>Register</Link>
+          <Link to="/login" className={styles.btn}>Login</Link>
+          <Link to="/register" className={styles.btnSecondary}>Register</Link>
         </div>
       </div>
     </div>

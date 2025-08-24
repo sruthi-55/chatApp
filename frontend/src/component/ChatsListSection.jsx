@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { searchUser } from "../api/user";
 import styles from "./ChatListSection.module.css";
+import { getFriends,startChat } from "../api/friends";
 
 export default function ChatsListSection({
   chats,
@@ -8,11 +9,24 @@ export default function ChatsListSection({
   setActiveChat,
   isFriendsSection,
   onSearchUserClick,
+  setChats,
+  socket,
 }) {
+  const [friends, setFriends] = useState([]); 
+
   const [searchTerm, setSearchTerm] = useState("");
   const [results, setResults] = useState([]);
   const [error, setError] = useState(null);
   const [showOverlay, setShowOverlay] = useState(false); // overlay toggle
+
+  // Fetch friends on component mount
+  useEffect(() => {
+    if (isFriendsSection) {
+      getFriends("/friends")
+        .then(data => setFriends(data))
+        .catch(err => console.error("Error fetching friends:", err));
+    }
+  }, [isFriendsSection]);
 
   // live search whenever searchTerm changes
   useEffect(() => {
@@ -48,48 +62,83 @@ export default function ChatsListSection({
     onSearchUserClick(user);
   };
 
-  return (
-    <div className={styles.chatListSection}>
-      {isFriendsSection && (
-        <div className={styles.searchContainer}>
-          <input
-            className={styles.serachUserInput}
-            type="text"
-            placeholder="search by username or email"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            onFocus={() => results.length > 0 && setShowOverlay(true)}
-          />
 
-          {/* search res dropdown overlay */}
-          {showOverlay && (
-            <div className={styles.searchOverlay} role="listbox">
-              {error && <p className={styles.error}>{error}</p>}
-              {results.map((user) => (
-                <div
-                  key={user.id}
-                  className={styles.searchResult}
-                  onClick={() => handleResultClick(user)}
-                  role="option"
-                  tabIndex={0}
-                >
-                  <div className={styles.resultMain}>
-                    <p className={styles.resultName}>{user.username}</p>
-                    <small className={styles.resultId}>ID: {user.id}</small>
+  // start chat 
+  const handleStartChatClick = async (friend) => {
+    try {
+      const newChat = await startChat(friend.id); 
+      setActiveChat(newChat);                     
+      setChats(prev => [newChat, ...prev]);      
+      socket.emit("joinChat", newChat.id);        // join WebSocket room
+    } catch (err) {
+      console.error("Start chat failed:", err);
+    }
+  };
+
+  return (
+      <div className={styles.chatListSection}>
+        {isFriendsSection && (
+        <div>
+          <div className={styles.searchContainer}>
+            <input
+              className={styles.serachUserInput}
+              type="text"
+              placeholder="search by username or email"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onFocus={() => results.length > 0 && setShowOverlay(true)}
+            />
+
+            {/* search res dropdown overlay */}
+            {showOverlay && (
+              <div className={styles.searchOverlay} role="listbox">
+                {error && <p className={styles.error}>{error}</p>}
+                {results.map((user) => (
+                  <div
+                    key={user.id}
+                    className={styles.searchResult}
+                    onClick={() => handleResultClick(user)}
+                    role="option"
+                    tabIndex={0}
+                  >
+                    <div className={styles.resultMain}>
+                      <p className={styles.resultName}>{user.username}</p>
+                      <small className={styles.resultId}>ID: {user.id}</small>
+                    </div>
                   </div>
+                ))}
+                {(error || results.length > 0) && (
+                  <button
+                    className={styles.closeOverlayBtn}
+                    onClick={() => setShowOverlay(false)}
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* friends chats here */}
+          {friends.map(friend => {
+            const existingChat = chats.find(c => c.members?.includes(friend.id));
+            return (
+              <div key={friend.id} className={styles.chatItem}>
+                <div className={styles.chatInfo}>
+                  <p className={styles.chatName}>{friend.username}</p>
+                  <p className={styles.chatLastMssg}>{friend.email}</p>
                 </div>
-              ))}
-              {(error || results.length > 0) && (
-                <button
-                  className={styles.closeOverlayBtn}
-                  onClick={() => setShowOverlay(false)}
-                >
-                  Close
-                </button>
-              )}
-            </div>
-          )}
+                {!existingChat && (
+                  <button className={styles.startChatBtn} onClick={() => handleStartChatClick(friend)}>
+                    Start Chat
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
+          
+
       )}
 
       {/* Chats list */}

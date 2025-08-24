@@ -1,18 +1,18 @@
 const pool = require("../utils/db");
 
-// find user by username or email
+//# find user by usernameOrEmail
 async function findUserByUsernameOrEmail(usernameOrEmail) {
   const client = await pool.connect();    // gets a connection from pool
   try {
     const sqlQuery = "SELECT * FROM users WHERE username = $1 OR email = $1";
-    const res = await client.query(sqlQuery, [usernameOrEmail]);
+    const res = await client.query(sqlQuery, [usernameOrEmail]);      // prevents SQL injection
     return res.rows[0];   // first match
   } finally {
-    client.release();
+    client.release();       // connection goes back to pool
   }
 }
 
-// check if user exists by username or email
+//# check if user exists by username or email
 async function checkUserExists(username, email) {
   const client = await pool.connect();
   try {
@@ -25,7 +25,7 @@ async function checkUserExists(username, email) {
 }
 
 
-// create user
+//# create user
 async function createUser(userObj) {
   const client = await pool.connect();
   try {

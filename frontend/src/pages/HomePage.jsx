@@ -1,97 +1,40 @@
-// Homepage.jsx
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+
 import api from "../api/axios";
 import styles from "./Homepage.module.css";
+import Sidebar from "../component/Sidebar";
 import ChatsListSection from "../component/ChatsListSection";
 import ChatWindow from "../component/ChatWindow";
-import Sidebar from "../component/Sidebar";
 import RequestsSection from "../component/RequestsSection";
-import { io } from "socket.io-client";
+import useUser from "../hooks/useUser";
+import useChats from "../hooks/useChats";
+import useSocket from "../hooks/useSocket";
+import useResizer from "../hooks/useResizer";
+import Profile from "./Profile";
+
 
 export default function Homepage() {
-  const [sidebarWidth] = useState(70);
-  const [chatListWidth, setChatListWidth] = useState(280);
-  const isResizingChatList = useRef(false);
+  // resizer 
+  const SIDEBAR_WIDTH = 70;
+  const {
+    width: chatListWidth,
+    startResizing,
+    stopResizing,
+    resize,
+  } = useResizer(280, 250, SIDEBAR_WIDTH);
 
-  const startResizingChatList = () => (isResizingChatList.current = true);
-  const stopResizing = () => (isResizingChatList.current = false);
-  const resize = (e) => {
-    if (isResizingChatList.current)
-      setChatListWidth(Math.max(250, e.clientX - sidebarWidth));
-  };
-
-  const navigate = useNavigate();
-  const [user, setUser] = useState(null);
-  const [chats, setChats] = useState([]);
+  // user + chats
+  const user = useUser();
+  const [chats, setChats] = useChats(user);
   const [activeChat, setActiveChat] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
+  
+  const socket = useSocket(user, activeChat, setChats, setChatMessages);
+
   const [selectedSection, setSelectedSection] = useState("allChats");
   const [viewingUser, setViewingUser] = useState(null);
-  const socket = useRef(null);
 
-  // fetch current user
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return navigate("/login");
-
-    api
-      .get("/user/me", { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => setUser(res.data))
-      .catch(() => navigate("/login"));
-  }, [navigate]);
-
-  // fetch chats
-  useEffect(() => {
-    if (!user) return;
-    api
-      .get("/chats")
-      .then((res) => {
-        const chatsData = res.data.map((chat) => ({
-          id: chat.id,
-          name: chat.is_group
-            ? chat.name
-            : `Chat with ${chat.memberids.find((id) => id !== user.id)}`,
-          lastMessage: chat.last_message_content || "",
-          type: chat.is_group ? "group" : "friend",
-        }));
-        setChats(chatsData);
-      })
-      .catch((err) => console.error("Failed to fetch chats:", err));
-  }, [user]);
-
-  // init socket connection
-  useEffect(() => {
-    if (!user) return;
-    socket.current = io("http://localhost:5001", {
-  withCredentials: true, // required if backend uses credentials
-});
-
-    socket.current.on("connect", () =>
-      console.log("Socket connected:", socket.current.id)
-    );
-
-    // receive new message
-    socket.current.on("newMessage", (message) => {
-      if (message.chat_id === activeChat?.id) {
-        setChatMessages((prev) => [...prev, message]);
-      }
-      // update lastMessage in chat list
-      setChats((prev) =>
-        prev.map((chat) =>
-          chat.id === message.chat_id
-            ? { ...chat, lastMessage: message.content }
-            : chat
-        )
-      );
-    });
-
-    return () => {
-      socket.current.disconnect();
-    };
-  }, [user, activeChat]);
-
-  // fetch messages for active chat
+  //# get messages of active chat
   useEffect(() => {
     if (!activeChat) return;
 
@@ -106,11 +49,15 @@ export default function Homepage() {
 
     // join chat room for real-time messages
     socket.current?.emit("joinRoom", activeChat.id);
-  }, [activeChat]);
 
+    // cleanup: leave room when switching
+    return () => {
+      socket.current?.emit("leaveRoom", activeChat.id);
+    };
+  }, [activeChat]);
+  
   if (!user) return <p>Loading...</p>;
 
-  const allChats = chats;
   const friendsChats = chats.filter((chat) => chat.type === "friend");
   const isChatSection = ["allChats", "friendsChat"].includes(selectedSection);
 
@@ -118,6 +65,7 @@ export default function Homepage() {
     setSelectedSection(section);
     setViewingUser(null);
 
+    // if active chat is not a friends chat
     if (section === "friendsChat" && !friendsChats.some((chat) => chat.id === activeChat?.id)) {
       setActiveChat(null);
     } else if (!["allChats", "friendsChat"].includes(section)) {
@@ -132,13 +80,17 @@ export default function Homepage() {
 
   return (
     <div className={styles.container} onMouseMove={resize} onMouseUp={stopResizing}>
-      <Sidebar user={user} setSelectedSection={handleSectionChange} style={{ width: "70px" }} />
+      <Sidebar
+        user={user}
+        setSelectedSection={handleSectionChange}
+        style={{ width: `${SIDEBAR_WIDTH}px` }}
+      />
 
       {isChatSection ? (
         <>
           <aside className={styles.chatList} style={{ width: `${chatListWidth}px` }}>
             <ChatsListSection
-              chats={selectedSection === "allChats" ? allChats : friendsChats}
+              chats={selectedSection === "allChats" ? chats : friendsChats}
               activeChat={activeChat}
               setActiveChat={(chat) => {
                 setActiveChat(chat);
@@ -146,9 +98,13 @@ export default function Homepage() {
               }}
               isFriendsSection={selectedSection === "friendsChat"}
               onSearchUserClick={handleViewUserProfile}
+              setChats={setChats}
+              socket={socket.current}
             />
           </aside>
-          <div className={styles.resizer} onMouseDown={startResizingChatList} />
+
+          <div className={styles.resizer} onMouseDown={startResizing} />
+
           <ChatWindow
             activeChat={activeChat}
             chatMessages={chatMessages}
@@ -161,13 +117,9 @@ export default function Homepage() {
         </>
       ) : (
         <main className={styles.fullWidthSection}>
-          {selectedSection === "profile" && <div className={styles.section}>Profile content here</div>}
-          {selectedSection === "requests" && (
-            <div className={styles.section}>
-              <RequestsSection />
-            </div>
-          )}
-          {selectedSection === "rooms" && <div className={styles.section}>Rooms list here</div>}
+          {selectedSection === "profile" && <div><Profile /></div>}
+          {selectedSection === "requests" && <RequestsSection />}
+          {selectedSection === "rooms" && <div>Rooms list here</div>}
         </main>
       )}
     </div>

@@ -10,21 +10,23 @@ const server = http.createServer(app);
 
 
 // create Socket.IO server
-// attaches Socket.IO to http server
+// attaches websocket server (Socket.IO) to http server
 const io = new Server(server, {
   cors: {
     origin: "http://localhost:5173", // your frontend
     methods: ["GET", "POST"],
-    credentials: true,
+    credentials: true,               // allows cookies/headers for authentication
   },
 });
 
+
 // handle real-time client connections
+// runs whenever a new client connects
 io.on("connection", (socket) => {
   console.log("New client connected:", socket.id);
 
   socket.on("joinRoom", (chatId) => {
-    socket.join(chatId); // join chat room
+    socket.join(chatId);    // join chat room - puts the socket into a room identified by chatId
   });
 
   socket.on("sendMessage", (message) => {
@@ -35,6 +37,9 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => console.log("Client disconnected:", socket.id));
 });
 
+
+// starts your express + Socket.IO backend server
+// listens for both HTTP requests and websocket connections
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });

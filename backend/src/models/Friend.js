@@ -1,11 +1,35 @@
 const pool = require("../utils/db");
 
-// create a friend request
+//# get all friends for logged-in user
+async function getAllFriends(userId) {
+  const client = await pool.connect();
+  try {
+    const res = await client.query(
+      `
+      SELECT u.id, u.username, u.email, u.full_name, u.avatar
+      FROM friendships f
+      JOIN users u ON u.id = f.user2_id
+      WHERE f.user1_id = $1
+      UNION
+      SELECT u.id, u.username, u.email, u.full_name, u.avatar
+      FROM friendships f
+      JOIN users u ON u.id = f.user1_id
+      WHERE f.user2_id = $1
+      `,
+      [userId]
+    );
+    return res.rows;
+  } finally {
+    client.release();
+  }
+}
+//# create a friend request
 async function createFriendRequest(senderId, receiverId) {
   if (!receiverId) throw new Error("receiverId required");
+
   if (Number(senderId) === Number(receiverId)) {
     const err = new Error("You cannot send a request to yourself");
-    err.status = 400;
+    err.status = 400;     // Bad request
     throw err;
   }
 
@@ -17,7 +41,7 @@ async function createFriendRequest(senderId, receiverId) {
     const userRes = await client.query("SELECT id FROM users WHERE id=$1", [receiverId]);
     if (userRes.rows.length === 0) {
       const err = new Error("Receiver not found");
-      err.status = 404;
+      err.status = 404;     // Not found
       throw err;
     }
 
@@ -28,11 +52,11 @@ async function createFriendRequest(senderId, receiverId) {
     );
     if (pendingCheck.rows.length > 0) {
       const err = new Error("Friend request already sent");
-      err.status = 400;
+      err.status = 400;     // Bad request
       throw err;
     }
 
-    // insert new request
+    // insert new request into friend_requests
     const insertRes = await client.query(
       `INSERT INTO friend_requests (sender_id, receiver_id)
        VALUES ($1, $2)
@@ -50,7 +74,7 @@ async function createFriendRequest(senderId, receiverId) {
   }
 }
 
-// get all friend requests for a user
+//# get all friend requests for a user (incoming + outgoing)
 async function getFriendRequestsForUser(userId) {
   const client = await pool.connect();
   try {
@@ -97,7 +121,7 @@ async function getFriendRequestsForUser(userId) {
   }
 }
 
-// accept or reject a request
+//# accept or reject a request
 async function updateFriendRequestStatus(requestId, userId, newStatus) {
   const client = await pool.connect();
   try {
@@ -107,23 +131,27 @@ async function updateFriendRequestStatus(requestId, userId, newStatus) {
       `SELECT id, sender_id, receiver_id, status FROM friend_requests WHERE id=$1`,
       [requestId]
     );
+
+    // if friend request doesn't exist
     if (frRes.rows.length === 0) {
       const err = new Error("Request not found");
-      err.status = 404;
+      err.status = 404;     // not found
       throw err;
     }
+
     const fr = frRes.rows[0];
     if (fr.receiver_id !== Number(userId)) {
       const err = new Error("Not authorized to update this request");
-      err.status = 403;
+      err.status = 403;     // forbidden
       throw err;
     }
     if (fr.status !== "pending") {
       const err = new Error("Request already processed");
-      err.status = 400;
+      err.status = 400;     // bad request
       throw err;
     }
 
+    // update friend request status
     const updRes = await client.query(
       `UPDATE friend_requests
        SET status=$1, responded_at=NOW()
@@ -132,6 +160,23 @@ async function updateFriendRequestStatus(requestId, userId, newStatus) {
       [newStatus, requestId]
     );
 
+    // if accepted, insert into friendships
+    if (newStatus === "accepted") {
+      await client.query(
+        `INSERT INTO friendships (user1_id, user2_id)
+         VALUES ($1, $2)
+         ON CONFLICT (user1_id, user2_id) DO NOTHING`,
+        [fr.sender_id, fr.receiver_id]
+      );
+      // optional: also insert the reverse order to avoid ordering issues
+      await client.query(
+        `INSERT INTO friendships (user1_id, user2_id)
+         VALUES ($1, $2)
+         ON CONFLICT (user1_id, user2_id) DO NOTHING`,
+        [fr.receiver_id, fr.sender_id]
+      );
+    }
+    
     await client.query("COMMIT");
     return updRes.rows[0];
   } catch (e) {
@@ -146,4 +191,5 @@ module.exports = {
   createFriendRequest,
   getFriendRequestsForUser,
   updateFriendRequestStatus,
+  getAllFriends,
 };
