@@ -6,8 +6,6 @@ export const getFriends = async () => {
   return res.data;
 };
 
-
-
 // Start chat with a friend
 export const startChat = async (friendId) => {
   const res = await api.post("/chats/start", { friendId });
@@ -31,7 +29,6 @@ export const fetchPendingFriendRequests = async () => {
   }
 };
 
-
 // Accept request
 export const acceptFriendRequest = async (requestId) => {
   const res = await api.post(`/friends/requests/${requestId}/accept`);
@@ -42,4 +39,16 @@ export const acceptFriendRequest = async (requestId) => {
 export const rejectFriendRequest = async (requestId) => {
   const res = await api.post(`/friends/requests/${requestId}/reject`);
   return res.data;
+};
+
+// Get friendship/request status with another user
+// Returns { status: "none" | "sent" | "pending" | "friends", requestId: number | null }
+export const getFriendStatus = async (userId) => {
+  try {
+    const res = await api.get(`/friends/status/${userId}`);
+    return res.data;
+  } catch (err) {
+    console.error("Error fetching friend status:", err);
+    throw err;
+  }
 };

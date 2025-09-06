@@ -3,6 +3,7 @@ import styles from "./ChatWindow.module.css";
 import SearchIcon from "../assets/icons/search.svg";
 import MoreIcon from "../assets/icons/more.svg";
 import api from "../api/axios";
+import { getFriendStatus, acceptFriendRequest, rejectFriendRequest } from "../api/friends";
 
 export default function ChatWindow({
   activeChat,
@@ -14,7 +15,8 @@ export default function ChatWindow({
   socket,
 }) {
   const [newMessage, setNewMessage] = useState("");
-  const [friendRequestSent, setFriendRequestSent] = useState(false);
+  const [friendStatus, setFriendStatus] = useState("none");
+  const [currentRequestId, setCurrentRequestId] = useState(null); // store request id for accept/reject
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
 
@@ -27,6 +29,27 @@ export default function ChatWindow({
   useEffect(() => {
     scrollToBottom("auto");
   }, [chatMessages]);
+
+  // fetch relationship status when viewing a user
+  useEffect(() => {
+    if (!viewingUser) return;
+
+    const fetchStatus = async () => {
+      try {
+        const res = await api.get(`/friends/status/${viewingUser.id}`);
+        setFriendStatus(res.data.status);
+
+        // If status is pending, we might need requestId for accept/reject
+        if (res.data.requestId) {
+          setCurrentRequestId(res.data.requestId);
+        }
+      } catch (err) {
+        console.error("Failed to fetch friend status:", err);
+      }
+    };
+
+    fetchStatus();
+  }, [viewingUser]);
 
   // handle sending a new message
   const handleSendMessage = async () => {
@@ -79,6 +102,44 @@ export default function ChatWindow({
     }
   };
 
+  // send friend request
+  const sendFriendRequest = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await api.post(
+        `/friends/request`,
+        { receiver_id: viewingUser.id },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setFriendStatus("sent");
+      setCurrentRequestId(res.data.request.id);
+      alert("Friend request sent!");
+    } catch (err) {
+      console.error("Friend request error:", err);
+      alert("Failed to send request");
+    }
+  };
+
+  // accept friend request
+  const handleAccept = async () => {
+    try {
+      await acceptFriendRequest(currentRequestId);
+      setFriendStatus("friends");
+    } catch (err) {
+      console.error("Accept request error:", err);
+    }
+  };
+
+  // reject friend request
+  const handleReject = async () => {
+    try {
+      await rejectFriendRequest(currentRequestId);
+      setFriendStatus("none");
+    } catch (err) {
+      console.error("Reject request error:", err);
+    }
+  };
+
   // view user profile
   if (viewingUser) {
     return (
@@ -100,26 +161,21 @@ export default function ChatWindow({
           </div>
 
           <div className={styles.profileActions}>
-            <button
-              onClick={async () => {
-                try {
-                  const token = localStorage.getItem("token");
-                  await api.post(
-                    `/friends/request`,
-                    { receiver_id: viewingUser.id },
-                    { headers: { Authorization: `Bearer ${token}` } }
-                  );
-                  setFriendRequestSent(true);
-                  alert("Friend request sent!");
-                } catch (err) {
-                  console.error("Friend request error:", err);
-                  alert("Failed to send request");
-                }
-              }}
-              disabled={friendRequestSent}
-            >
-              {friendRequestSent ? "Request Sent" : "Add Friend"}
-            </button>
+            {friendStatus === "none" && (
+              <button onClick={sendFriendRequest}>Add Friend</button>
+            )}
+            {friendStatus === "sent" && (
+              <button disabled>Request Sent</button>
+            )}
+            {friendStatus === "pending" && (
+              <>
+                <button onClick={handleAccept}>Accept</button>
+                <button onClick={handleReject}>Reject</button>
+              </>
+            )}
+            {friendStatus === "friends" && (
+              <button disabled>Friends</button>
+            )}
             <button onClick={() => setViewingUser(null)}>Back</button>
           </div>
         </div>
@@ -129,7 +185,11 @@ export default function ChatWindow({
 
   // no active chat
   if (!activeChat)
-    return <div className={styles.noChatSelected}>Select a chat to start messaging</div>;
+    return (
+      <div className={styles.noChatSelected}>
+        Select a chat to start messaging
+      </div>
+    );
 
   // active chat
   return (
@@ -179,18 +239,3 @@ export default function ChatWindow({
     </main>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

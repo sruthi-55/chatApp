@@ -3,7 +3,7 @@ import api from "../api/axios";
 import styles from "./Register.module.css";
 import { useNavigate } from "react-router-dom";
 
-const IMGBB_UPLOAD_URL = `https://api.imgbb.com/1/upload?expiration=600&key=${import.meta.env.VITE_IMGBB_API_KEY}`;
+const IMGBB_UPLOAD_URL = `https://api.imgbb.com/1/upload?key=${import.meta.env.VITE_IMGBB_API_KEY}`;
 
 export default function Register() {
   const navigate = useNavigate();
