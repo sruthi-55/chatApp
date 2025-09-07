@@ -12,7 +12,7 @@ export default function App() {
 
   useEffect(() => {
     // initialize one persistent socket for the whole app
-    socket.current = io('http://localhost:5001', { withCredentials: true });
+    socket.current = io(import.meta.env.VITE_BACKEND_URL, { withCredentials: true });
 
     // register current user if logged in
     const userId = localStorage.getItem('userId');

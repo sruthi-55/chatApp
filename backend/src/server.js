@@ -1,24 +1,31 @@
 const http = require('http');
+
+// remove DEBUG_URL if present to prevent Render crash
+if (process.env.DEBUG_URL) delete process.env.DEBUG_URL;
+
 const app = require('./index');
 const { Server } = require('socket.io');
-const { setSocketInstance, onlineUsers } = require('./utils/socket');  // import socket utility
+const { setSocketInstance, onlineUsers } = require('./utils/socket'); // import socket utility
 
 const PORT = process.env.PORT || 5001;
 
 // create HTTP server
 const server = http.createServer(app);
 
+// allowed origins for Socket.IO
+const allowedOrigins = [process.env.CLIENT_URL]; // only 1 URL
+
 // create Socket.IO server
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST"],
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "OPTIONS"], // include OPTIONS for preflight
     credentials: true,
   },
 });
 
 // register io instance in socket utils
-setSocketInstance(io);  // now other files can safely access io
+setSocketInstance(io);
 
 // handle connections
 io.on("connection", (socket) => {
@@ -35,7 +42,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("sendMessage", (message) => {
-    // broadcast to everyone in room including sender
     console.log("Server got sendMessage:", message);
     io.to(message.chat_id).emit("newMessage", message);
   });
@@ -55,5 +61,5 @@ server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
 
-// export server only, io handled via utils/socket
+// export server only
 module.exports = { server };

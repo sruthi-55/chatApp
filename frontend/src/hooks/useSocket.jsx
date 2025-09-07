@@ -17,7 +17,7 @@ export default function useSocket(
 
     if (!socket.current) {
       // creates a new Socket.IO client and connects it to your backend server
-      socket.current = io("http://localhost:5001", { withCredentials: true });
+      socket.current = io(import.meta.env.VITE_BACKEND_URL, { withCredentials: true });
     }
 
     const handleConnect = () => {

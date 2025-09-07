@@ -1,9 +1,9 @@
 import axios from 'axios';          // to make http req from frontend to backend
 
-
+console.log(import.meta.env.VITE_BACKEND_URL)
 // customize instance - global configs
 const api = axios.create({
-  baseURL: `${process.env.REACT_APP_API_URL}/api`,     // backend URL with /api prefix
+  baseURL: `${import.meta.env.VITE_BACKEND_URL}/api`,     // backend URL with /api prefix
 });
 
 

@@ -1,42 +1,51 @@
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();     // loads env variables from .env file into process.env
+require('dotenv').config(); // loads env variables from .env file into process.env
 
+const app = express(); // 1. creates app instance
 
-const app = express();      //1. creates app instance
+// 2. Register middleware and routes on app
+const allowedOrigins = [
+  process.env.CLIENT_URL // only 1 URL now
+];
 
-//2. Register middleware and routes on app
-
-// helps set the right CORS headers so browsers allow cross-origin requests from your frontend
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
-  credentials: true,    // when credentials: true you cannot use origin: '*'
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // allow requests with no origin
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      console.log("Blocked by CORS:", origin);
+      return callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"], // explicitly allow OPTIONS
 }));
 
+// handle preflight requests for all routes
+app.options("*", cors());
 
-app.use(express.json());    
 // body parser - parses JSON req body and populates req.body
-
+app.use(express.json());
 
 // health check route
 app.get('/', (req, res) => {
-  res.send('Chat App Backend is running');      // 200 response with text
-}); 
+  res.send('Chat App Backend is running');
+});
 
-
-//3. import routes
+// 3. import routes
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const chatRoutes = require('./routes/chat');
 const friendsRoutes = require("./routes/friends");
 
-//4. mounts the router
-// requests for '/api/auth' are forwarded to the authRoutes router
-app.use('/api/auth', authRoutes);     // all routes here will be prefixed with /api/auth
+// 4. mounts the router
+app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/chats', chatRoutes);
 app.use("/api/friends", friendsRoutes);
 
-
-//5. export configured express app
+// 5. export configured express app
 module.exports = app;
