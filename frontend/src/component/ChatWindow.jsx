@@ -36,7 +36,7 @@ export default function ChatWindow({
     scrollToBottom("auto");
   }, [chatMessages]);
 
-  //# determine other user for 1-on-1 chat
+  // determine other user for 1-on-1 chat
   const otherUser =
     !activeChat?.is_group && activeChat?.members
       ? activeChat.members.find((m) => m.id !== user.id)
@@ -110,11 +110,36 @@ export default function ChatWindow({
     socket.current.on("friendRequestRejected", handleRejected);
 
     return () => {
-      socket.current.off("friendRequestSent", handleSent);
-      socket.current.off("friendRequestAccepted", handleAccepted);
-      socket.current.off("friendRequestRejected", handleRejected);
+      if (socket?.current) {
+        socket.current.off("friendRequestSent", handleSent);
+        socket.current.off("friendRequestAccepted", handleAccepted);
+        socket.current.off("friendRequestRejected", handleRejected);
+      }
     };
   }, [socket, user]);
+
+  // subscribe to socket updates for new messages
+  useEffect(() => {
+    if (!socket?.current || !activeChat?.id) return;
+
+    const handleNewMessage = (message) => {
+      if (message.chat_id !== activeChat.id) return;
+
+      // prevent duplicates: skip if I already sent it
+      if (message.sender_id === user.id) {
+        return;
+      }
+
+      setChatMessages((prev) => [...prev, message]);
+      scrollToBottom("smooth");
+    };
+
+    socket.current.on("newMessage", handleNewMessage);
+
+    return () => {
+      socket.current.off("newMessage", handleNewMessage);
+    };
+  }, [socket, activeChat, setChatMessages, user.id]);
 
   // handle sending a new message
   const handleSendMessage = async () => {
@@ -125,7 +150,6 @@ export default function ChatWindow({
         content: newMessage,
       });
 
-      setChatMessages((prev) => [...prev, res.data]);
       setNewMessage("");
       scrollToBottom("smooth");
 
@@ -267,12 +291,6 @@ export default function ChatWindow({
               : otherUser?.username || "Chat"}
           </div>
           <div className={styles.lastSeen}>last seen just now</div>
-          {/* 🔥 DEBUG INFO */}
-          <div style={{ fontSize: "10px", color: "red" }}>
-            <p>Chat ID: {activeChat.id}</p>
-            <p>Members: {JSON.stringify(activeChat.members)}</p>
-            <p>Last Message: {activeChat.lastMessage || "None"}</p>
-          </div>
         </div>
         <div className={styles.headerIcons}>
           <img src={SearchIcon} alt="Search" className={styles.icon} />

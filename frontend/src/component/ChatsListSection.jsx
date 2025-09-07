@@ -11,23 +11,23 @@ export default function ChatsListSection({
   onSearchUserClick,
   setChats,
   socket,
-  registerSetFriends, // 🔥 NEW PROP: parent passes down to register setFriends
+  registerSetFriends,
+  currentUserId, // current logged-in user id
 }) {
   const [friends, setFriends] = useState([]);
-
   const [searchTerm, setSearchTerm] = useState("");
   const [results, setResults] = useState([]);
   const [error, setError] = useState(null);
-  const [showOverlay, setShowOverlay] = useState(false); // overlay toggle
+  const [showOverlay, setShowOverlay] = useState(false);
 
-  // 🔥 expose setFriends to parent (so useSocket can refresh friends on events)
+  // expose setFriends to parent
   useEffect(() => {
     if (registerSetFriends) {
       registerSetFriends(setFriends);
     }
   }, [registerSetFriends]);
 
-  // Fetch friends on component mount or when switching to friends section
+  // fetch friends
   useEffect(() => {
     if (isFriendsSection) {
       getFriends("/friends")
@@ -36,7 +36,7 @@ export default function ChatsListSection({
     }
   }, [isFriendsSection]);
 
-  // live search whenever searchTerm changes
+  // search users with debounce
   useEffect(() => {
     if (!searchTerm.trim()) {
       setResults([]);
@@ -58,9 +58,9 @@ export default function ChatsListSection({
         setError("No users found");
         setShowOverlay(true);
       }
-    }, 300); // 300ms debounce
+    }, 300);
 
-    return () => clearTimeout(delayDebounceFn); // cleanup previous timer
+    return () => clearTimeout(delayDebounceFn);
   }, [searchTerm]);
 
   const handleResultClick = (user) => {
@@ -74,17 +74,85 @@ export default function ChatsListSection({
   const handleStartChatClick = async (friend) => {
     try {
       const newChat = await startChat(friend.id);
-      setActiveChat(newChat);
-      setChats((prev) => [newChat, ...prev]);
 
-      // ✅ safer: only emit if socket is alive
-      if (socket) {
-        socket.emit("joinChat", newChat.id); // join WebSocket room
+      // attach friendId from friend object
+      const chatWithFriendId = { ...newChat, friendId: friend.id, lastMessage: "" };
+
+      setActiveChat(chatWithFriendId);
+
+      // add new chat to state
+      setChats((prev) => [chatWithFriendId, ...prev]);
+
+      if (socket?.current) {
+        socket.current.emit("joinRoom", chatWithFriendId.id);
       }
     } catch (err) {
       console.error("Start chat failed:", err);
     }
   };
+
+  // immediately update lastMessage when sender sends a message
+  const handleMessageSend = (chatId, content) => {
+    setChats((prevChats) =>
+      prevChats.map((chat) =>
+        chat.id === chatId
+          ? { ...chat, lastMessage: content }
+          : chat
+      )
+    );
+  };
+
+  // listen for new messages (sent or received) to update chats
+  useEffect(() => {
+    if (!socket?.current) return;
+
+    const handleNewMessage = (message) => {
+      setChats((prevChats) =>
+        prevChats.map((chat) =>
+          chat.id === message.chatId
+            ? { ...chat, lastMessage: message.content }
+            : chat
+        )
+      );
+    };
+
+    socket.current.on("newMessage", handleNewMessage);
+    socket.current.on("messageSent", handleNewMessage); // update sender side immediately
+
+    return () => {
+      socket.current.off("newMessage", handleNewMessage);
+      socket.current.off("messageSent", handleNewMessage);
+    };
+  }, [socket]);
+
+  // map chats to include friendId and normalize lastMessage
+  const chatsWithFriendId = chats.map((chat) => {
+    let lastMessageText = "";
+    if (chat.lastMessage) {
+      lastMessageText = typeof chat.lastMessage === "string"
+        ? chat.lastMessage
+        : chat.lastMessage.content || "";
+    }
+
+    let friendId = chat.friendId;
+    if (!friendId && chat.members && !chat.is_group) {
+      const friend = chat.members.find((m) => m.id !== Number(currentUserId));
+      friendId = friend?.id || null;
+    }
+
+    let chatName = chat.name;
+    if (!chatName && !chat.is_group && chat.members) {
+      const friend = chat.members.find((m) => m.id !== Number(currentUserId));
+      chatName = friend?.username ? `Chat with ${friend.username}` : "Chat";
+    }
+
+    return {
+      ...chat,
+      lastMessage: lastMessageText,
+      friendId,
+      name: chatName,
+    };
+  });
 
   return (
     <div className={styles.chatListSection}>
@@ -99,8 +167,6 @@ export default function ChatsListSection({
               onChange={(e) => setSearchTerm(e.target.value)}
               onFocus={() => results.length > 0 && setShowOverlay(true)}
             />
-
-            {/* search res dropdown overlay */}
             {showOverlay && (
               <div className={styles.searchOverlay} role="listbox">
                 {error && <p className={styles.error}>{error}</p>}
@@ -128,26 +194,33 @@ export default function ChatsListSection({
             )}
           </div>
 
-          {/* friends chats here */}
           {friends.map((friend) => {
-            const existingChat = chats.find((c) =>
-              c.members?.includes(friend.id)
-            );
-            const hasMessages =
-              existingChat?.lastMessage || existingChat?.messages?.length > 0;
+            const chat = chatsWithFriendId.find((c) => c.friendId === friend.id);
+
+            const hasMessages = !!chat?.lastMessage;
+
+            const handleClick = () => {
+              if (chat) {
+                setActiveChat(chat);
+              } else {
+                handleStartChatClick(friend);
+              }
+            };
 
             return (
-              <div key={friend.id} className={styles.chatItem}>
+              <div key={friend.id} className={styles.chatItem} onClick={handleClick}>
                 <div className={styles.chatInfo}>
                   <p className={styles.chatName}>{friend.username}</p>
-                  <p className={styles.chatLastMssg}>{friend.email}</p>
+                  <p className={styles.chatLastMssg}>{chat?.lastMessage || ""}</p>
                 </div>
 
-                {/* 🔥 Show Start Chat button only if chat has no messages yet */}
                 {!hasMessages && (
                   <button
                     className={styles.startChatBtn}
-                    onClick={() => handleStartChatClick(friend)}>
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleStartChatClick(friend);
+                    }}>
                     Start Chat
                   </button>
                 )}
@@ -156,7 +229,6 @@ export default function ChatsListSection({
           })}
         </div>
       )}
-
     </div>
   );
 }

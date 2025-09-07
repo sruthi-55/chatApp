@@ -2,9 +2,13 @@ const pool = require("../utils/db");
 const { getUserById } = require("./User");
 
 //# fetch all chats for a user along with last message
+//# fetch all chats for a user along with last message
 async function getUserChats(userId) {
   const client = await pool.connect();
   try {
+    // ensure userId is number
+    userId = Number(userId);
+
     const sqlQuery = `
       SELECT 
         c.id, 
@@ -25,19 +29,58 @@ async function getUserChats(userId) {
       ORDER BY lm.created_at DESC NULLS LAST
     `;
     const res = await client.query(sqlQuery, [userId]);
-    
-    // map member IDs to full user objects
-    const chatsWithMembers = await Promise.all(res.rows.map(async (chat) => {
-      const memberIds = chat.members; // now an integer array
-      if (!memberIds || !memberIds.length) return chat;
 
-      const { rows: members } = await client.query(
-        `SELECT id, username, avatar FROM users WHERE id = ANY($1)`,
-        [memberIds]
-      );
 
-      return { ...chat, members };
-    }));
+    // map member IDs to full user objects and include friendId
+    const chatsWithMembers = await Promise.all(
+      res.rows.map(async (chat) => {
+        const memberIds = chat.members || []; // fallback if null
+
+        if (!memberIds.length) {
+          return {
+            id: chat.id,
+            name: chat.name,
+            is_group: chat.is_group,
+            members: [],
+            friendId: null,
+            lastMessage: null,
+          };
+        }
+
+        // fetch full user info
+        const { rows: members } = await client.query(
+          `SELECT id, username, avatar, email FROM users WHERE id = ANY($1)`,
+          [memberIds]
+        );
+
+        
+
+        // determine friendId for 1:1 chat
+        let friendId = null;
+        if (!chat.is_group && members.length > 0) {
+          const friend = members.find((m) => m.id !== userId);
+          friendId = friend?.id || null;
+        }
+
+        // structure lastMessage
+        const lastMessage = chat.last_message_id
+          ? {
+              id: chat.last_message_id,
+              content: chat.last_message_content,
+              senderId: chat.last_message_sender,
+            }
+          : null;
+
+        return {
+          id: chat.id,
+          name: chat.name,
+          is_group: chat.is_group,
+          members,
+          friendId,
+          lastMessage,
+        };
+      })
+    );
 
     return chatsWithMembers;
   } finally {
@@ -96,22 +139,33 @@ async function createOrGetDirectChat(user1Id, user2Id) {
     const checkRes = await client.query(checkSql, [user1Id, user2Id]);
 
     if (checkRes.rows.length > 0) {
-      const members = await client.query(
-        `SELECT id, username, avatar FROM users WHERE id = ANY($1)`,
+      const membersQuery = await client.query(
+        `SELECT id, username, avatar, email FROM users WHERE id = ANY($1)`,
         [checkRes.rows[0].members]
       );
+
+      
+
+      const friend = membersQuery.rows.find(m => m.id !== Number(user1Id));
+
       await client.query("COMMIT");
-      return { id: checkRes.rows[0].id, members: members.rows }; // existing chat with full members
+
+      return {
+        id: checkRes.rows[0].id,
+        members: membersQuery.rows,
+        friendId: friend?.id || null, // always include friendId
+        lastMessage: null, // can add last message if needed
+      };
     }
 
-    // create chat
+    // create chat if not exists
     const insertChat = await client.query(
       `INSERT INTO chats (is_group, members) VALUES (false, $1) RETURNING id`,
-      [[user1Id, user2Id]] // pass integer array directly
+      [[user1Id, user2Id]] // integer array
     );
     const chatId = insertChat.rows[0].id;
 
-    // also populate chat_members table
+    // populate chat_members table if exists
     await client.query(
       `INSERT INTO chat_members (chat_id, user_id) VALUES ($1, $2), ($1, $3)`,
       [chatId, user1Id, user2Id]
@@ -119,12 +173,20 @@ async function createOrGetDirectChat(user1Id, user2Id) {
 
     // fetch full user info for members
     const { rows: members } = await client.query(
-      `SELECT id, username, avatar FROM users WHERE id = ANY($1)`,
+      `SELECT id, username, avatar, email FROM users WHERE id = ANY($1)`,
       [[user1Id, user2Id]]
     );
 
+    const friend = members.find(m => m.id !== Number(user1Id));
+
     await client.query("COMMIT");
-    return { id: chatId, members }; // return full chat object with members
+
+    return {
+      id: chatId,
+      members,
+      friendId: friend?.id || null, // always include friendId
+      lastMessage: null,
+    };
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;
@@ -133,4 +195,9 @@ async function createOrGetDirectChat(user1Id, user2Id) {
   }
 }
 
-module.exports = { getUserChats, getChatMessages, createMessage, createOrGetDirectChat };
+module.exports = {
+  getUserChats,
+  getChatMessages,
+  createMessage,
+  createOrGetDirectChat,
+};

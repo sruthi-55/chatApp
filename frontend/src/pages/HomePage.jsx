@@ -12,7 +12,6 @@ import useSocket from "../hooks/useSocket";
 import useResizer from "../hooks/useResizer";
 import Profile from "./Profile";
 
-
 export default function Homepage() {
   // resizer 
   const SIDEBAR_WIDTH = 70;
@@ -65,8 +64,8 @@ export default function Homepage() {
     return () => {
       socket.current?.emit("leaveRoom", activeChat.id);
     };
-  }, [activeChat]);
-  
+  }, [activeChat, socket]);
+
   if (!user) return <p>Loading...</p>;
 
   const friendsChats = chats.filter((chat) => chat.type === "friend");
@@ -76,7 +75,6 @@ export default function Homepage() {
     setSelectedSection(section);
     setViewingUser(null);
 
-    // if active chat is not a friends chat
     if (section === "friendsChat" && !friendsChats.some((chat) => chat.id === activeChat?.id)) {
       setActiveChat(null);
     } else if (!["allChats", "friendsChat"].includes(section)) {
@@ -110,7 +108,7 @@ export default function Homepage() {
               isFriendsSection={selectedSection === "friendsChat"}
               onSearchUserClick={handleViewUserProfile}
               setChats={setChats}
-              socket={socket.current}
+              socket={socket} // 🔥 pass full ref, not socket.current
               registerSetFriends={(fn) => {  
                 setFriendsRef.current = fn;   // 🔥 pass setFriends back up for socket to use
               }}
@@ -126,7 +124,7 @@ export default function Homepage() {
             user={user}
             viewingUser={viewingUser}
             setViewingUser={setViewingUser}
-            socket={socket.current}
+            socket={socket} // 🔥 pass full ref, not socket.current
           />
         </>
       ) : (

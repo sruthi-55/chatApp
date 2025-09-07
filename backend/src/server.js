@@ -1,7 +1,7 @@
 const http = require('http');
 const app = require('./index');
 const { Server } = require('socket.io');
-const { setSocketInstance, onlineUsers } = require('./utils/socket');  // 🔥 import socket utility
+const { setSocketInstance, onlineUsers } = require('./utils/socket');  // import socket utility
 
 const PORT = process.env.PORT || 5001;
 
@@ -18,7 +18,7 @@ const io = new Server(server, {
 });
 
 // register io instance in socket utils
-setSocketInstance(io);  // 🔥 now other files can safely access io
+setSocketInstance(io);  // now other files can safely access io
 
 // handle connections
 io.on("connection", (socket) => {
@@ -35,8 +35,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("sendMessage", (message) => {
-    // broadcast only to room members
-    socket.to(message.chat_id).emit("newMessage", message);
+    // broadcast to everyone in room including sender
+    console.log("Server got sendMessage:", message);
+    io.to(message.chat_id).emit("newMessage", message);
   });
 
   socket.on("disconnect", () => {
@@ -54,5 +55,5 @@ server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
 
-// 🔥 export server only, io handled via utils/socket
+// export server only, io handled via utils/socket
 module.exports = { server };

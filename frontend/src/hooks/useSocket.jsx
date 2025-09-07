@@ -15,17 +15,17 @@ export default function useSocket(
   useEffect(() => {
     if (!user) return;
 
-    // creates a new Socket.IO client and connects it to your backend server
-    socket.current = io("http://localhost:5001", { withCredentials: true });
+    if (!socket.current) {
+      // creates a new Socket.IO client and connects it to your backend server
+      socket.current = io("http://localhost:5001", { withCredentials: true });
+    }
 
     const handleConnect = () => {
-      console.log("Socket connected:", socket.current.id);  
       socket.current.emit("registerUser", user.id);     // tell backend who I am
     };  
 
     //# handle new chat message
     const handleNewMessage = (message) => {
-      console.log("Payload:", message);
 
       // Normalize chatId to match your chat state 'id'
       const chatId = message.chat_id ?? message.chatId;
@@ -64,19 +64,16 @@ export default function useSocket(
 
     //# handle friend request events
     const handleFriendRequestSent = (req) => {
-      console.log("Friend request sent event:", req);
       setFriendStatus && setFriendStatus("pending");
     };
 
     const handleFriendRequestAccepted = async (req) => {
-      console.log("Friend request accepted event:", req);
       setFriendStatus && setFriendStatus("friends");
 
       // 🔥 refresh friends list instantly
       if (setFriends) {
         try {
           const data = await getFriends("/friends");
-          // call safely if it's a ref
           if (typeof setFriends === "function") {
             setFriends(data);
           } else if (setFriends.current) {
@@ -89,7 +86,6 @@ export default function useSocket(
     };
 
     const handleFriendRequestRejected = (req) => {
-      console.log("Friend request rejected event:", req);
       setFriendStatus && setFriendStatus("none");
     };
 
@@ -101,14 +97,16 @@ export default function useSocket(
     socket.current.on("friendRequest:rejected", handleFriendRequestRejected);
 
     return () => {    // cleanup
+      if (!socket.current) return;
       socket.current.off("connect", handleConnect);
       socket.current.off("newMessage", handleNewMessage);
       socket.current.off("friendRequest:sent", handleFriendRequestSent);
       socket.current.off("friendRequest:accepted", handleFriendRequestAccepted);
       socket.current.off("friendRequest:rejected", handleFriendRequestRejected);
       socket.current.disconnect();
+      socket.current = null; // reset for next mount
     };
   }, [user, activeChat, setChats, setChatMessages, setFriendStatus, setFriends]);
 
-  return socket;
+  return socket; // always return the ref
 }

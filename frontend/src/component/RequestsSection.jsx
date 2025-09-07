@@ -66,9 +66,11 @@ export default function RequestsSection() {
     socket.current.on("friendRequestRejected", handleRequestRejected);
 
     return () => {
-      socket.current.off("friendRequestSent", handleNewRequest);
-      socket.current.off("friendRequestAccepted", handleRequestAccepted);
-      socket.current.off("friendRequestRejected", handleRequestRejected);
+      if (socket?.current) {
+        socket.current.off("friendRequestSent", handleNewRequest);
+        socket.current.off("friendRequestAccepted", handleRequestAccepted);
+        socket.current.off("friendRequestRejected", handleRequestRejected);
+      }
     };
   }, [socket, user]);
 

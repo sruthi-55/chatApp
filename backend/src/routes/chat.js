@@ -12,7 +12,7 @@ router.get("/", authMiddleware, async (req, res) => {
     res.json(chats);
   } catch (err) {
     console.error("Get user chats error:", err);
-    res.status(500).json({ message: "Server error" });    // Internal Server Error
+    res.status(500).json({ message: "Server error" });
   }
 });
 
@@ -30,7 +30,7 @@ router.get("/:chatId/messages", authMiddleware, async (req, res) => {
     res.json(messages);
   } catch (err) {
     console.error("Get chat messages error:", err);
-    res.status(500).json({ message: "Server error" });      // Internal Server Error
+    res.status(500).json({ message: "Server error" });
   }
 });
 
@@ -40,13 +40,13 @@ router.post("/:chatId/messages", authMiddleware, async (req, res) => {
     const { chatId } = req.params;
     const { content } = req.body;
     if (!content)
-      return res.status(400).json({ message: "Message content required" });     // Bad request
+      return res.status(400).json({ message: "Message content required" });
 
     const message = await createMessage(chatId, req.userId, content);
-    res.status(200).json(message);    
+    res.status(200).json(message);
   } catch (err) {
     console.error("Send message error:", err);
-    res.status(500).json({ message: "Server error" });      // Internal Server Error
+    res.status(500).json({ message: "Server error" });
   }
 });
 
@@ -56,9 +56,8 @@ router.post("/start", authMiddleware, async (req, res) => {
     const { friendId } = req.body;
     if (!friendId) return res.status(400).json({ error: "friendId required" });
 
-    // Use req.userId instead of req.user.id
     const chat = await createOrGetDirectChat(req.userId, friendId);
-    res.json(chat); // full chat object with members
+    res.json(chat); // full chat object with members + friendId
   } catch (err) {
     console.error("Start chat error:", err);
     res.status(500).json({ error: err.message });
