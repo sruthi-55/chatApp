@@ -3,7 +3,7 @@ import axios from 'axios';          // to make http req from frontend to backend
 
 // customize instance - global configs
 const api = axios.create({
-  baseURL: 'http://localhost:5001/api',     // backend URL with /api prefix
+  baseURL: `${process.env.REACT_APP_API_URL}/api`,     // backend URL with /api prefix
 });
 
 
