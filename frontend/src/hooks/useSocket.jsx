@@ -1,7 +1,15 @@
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
+import { getFriends } from "../api/friends";   // 🔥 fetch friends on socket events
 
-export default function useSocket(user, activeChat, setChats, setChatMessages) {
+export default function useSocket(
+  user,
+  activeChat,
+  setChats,
+  setChatMessages,
+  setFriendStatus,
+  setFriends
+) {
   const socket = useRef(null);    // useRef - persists across re-renders
 
   useEffect(() => {
@@ -10,8 +18,12 @@ export default function useSocket(user, activeChat, setChats, setChatMessages) {
     // creates a new Socket.IO client and connects it to your backend server
     socket.current = io("http://localhost:5001", { withCredentials: true });
 
-    const handleConnect = () => console.log("Socket connected:", socket.current.id);  
+    const handleConnect = () => {
+      console.log("Socket connected:", socket.current.id);  
+      socket.current.emit("registerUser", user.id);     // tell backend who I am
+    };  
 
+    //# handle new chat message
     const handleNewMessage = (message) => {
       console.log("Payload:", message);
 
@@ -50,16 +62,53 @@ export default function useSocket(user, activeChat, setChats, setChatMessages) {
       }
     };
 
+    //# handle friend request events
+    const handleFriendRequestSent = (req) => {
+      console.log("Friend request sent event:", req);
+      setFriendStatus && setFriendStatus("pending");
+    };
 
+    const handleFriendRequestAccepted = async (req) => {
+      console.log("Friend request accepted event:", req);
+      setFriendStatus && setFriendStatus("friends");
+
+      // 🔥 refresh friends list instantly
+      if (setFriends) {
+        try {
+          const data = await getFriends("/friends");
+          // call safely if it's a ref
+          if (typeof setFriends === "function") {
+            setFriends(data);
+          } else if (setFriends.current) {
+            setFriends.current(data);
+          }
+        } catch (err) {
+          console.error("Failed to refresh friends list:", err);
+        }
+      }
+    };
+
+    const handleFriendRequestRejected = (req) => {
+      console.log("Friend request rejected event:", req);
+      setFriendStatus && setFriendStatus("none");
+    };
+
+    // socket listeners
     socket.current.on("connect", handleConnect);
-    socket.current.on("newMessage", handleNewMessage);    // receive new message
+    socket.current.on("newMessage", handleNewMessage);
+    socket.current.on("friendRequest:sent", handleFriendRequestSent);
+    socket.current.on("friendRequest:accepted", handleFriendRequestAccepted);
+    socket.current.on("friendRequest:rejected", handleFriendRequestRejected);
 
     return () => {    // cleanup
       socket.current.off("connect", handleConnect);
       socket.current.off("newMessage", handleNewMessage);
+      socket.current.off("friendRequest:sent", handleFriendRequestSent);
+      socket.current.off("friendRequest:accepted", handleFriendRequestAccepted);
+      socket.current.off("friendRequest:rejected", handleFriendRequestRejected);
       socket.current.disconnect();
     };
-  }, [user, activeChat, setChats, setChatMessages]);
+  }, [user, activeChat, setChats, setChatMessages, setFriendStatus, setFriends]);
 
   return socket;
 }

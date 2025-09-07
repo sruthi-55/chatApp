@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { searchUser } from "../api/user";
 import styles from "./ChatListSection.module.css";
-import { getFriends,startChat } from "../api/friends";
+import { getFriends, startChat } from "../api/friends";
 
 export default function ChatsListSection({
   chats,
@@ -11,6 +11,7 @@ export default function ChatsListSection({
   onSearchUserClick,
   setChats,
   socket,
+  registerSetFriends,   // 🔥 NEW PROP: parent passes down to register setFriends
 }) {
   const [friends, setFriends] = useState([]); 
 
@@ -19,12 +20,19 @@ export default function ChatsListSection({
   const [error, setError] = useState(null);
   const [showOverlay, setShowOverlay] = useState(false); // overlay toggle
 
-  // Fetch friends on component mount
+  // 🔥 expose setFriends to parent (so useSocket can refresh friends on events)
+  useEffect(() => {
+    if (registerSetFriends) {
+      registerSetFriends(setFriends);
+    }
+  }, [registerSetFriends]);
+
+  // Fetch friends on component mount or when switching to friends section
   useEffect(() => {
     if (isFriendsSection) {
       getFriends("/friends")
-        .then(data => setFriends(data))
-        .catch(err => console.error("Error fetching friends:", err));
+        .then((data) => setFriends(data))
+        .catch((err) => console.error("Error fetching friends:", err));
     }
   }, [isFriendsSection]);
 
@@ -50,7 +58,7 @@ export default function ChatsListSection({
         setError("No users found");
         setShowOverlay(true);
       }
-    }, 300); // 300ms 
+    }, 300); // 300ms debounce
 
     return () => clearTimeout(delayDebounceFn); // cleanup previous timer
   }, [searchTerm]);
@@ -62,22 +70,25 @@ export default function ChatsListSection({
     onSearchUserClick(user);
   };
 
-
   // start chat 
   const handleStartChatClick = async (friend) => {
     try {
       const newChat = await startChat(friend.id); 
       setActiveChat(newChat);                     
-      setChats(prev => [newChat, ...prev]);      
-      socket.emit("joinChat", newChat.id);        // join WebSocket room
+      setChats((prev) => [newChat, ...prev]);      
+
+      // ✅ safer: only emit if socket is alive
+      if (socket) {
+        socket.emit("joinChat", newChat.id);        // join WebSocket room
+      }
     } catch (err) {
       console.error("Start chat failed:", err);
     }
   };
 
   return (
-      <div className={styles.chatListSection}>
-        {isFriendsSection && (
+    <div className={styles.chatListSection}>
+      {isFriendsSection && (
         <div>
           <div className={styles.searchContainer}>
             <input
@@ -120,8 +131,8 @@ export default function ChatsListSection({
           </div>
 
           {/* friends chats here */}
-          {friends.map(friend => {
-            const existingChat = chats.find(c => c.members?.includes(friend.id));
+          {friends.map((friend) => {
+            const existingChat = chats.find((c) => c.members?.includes(friend.id));
             return (
               <div key={friend.id} className={styles.chatItem}>
                 <div className={styles.chatInfo}>
@@ -129,7 +140,10 @@ export default function ChatsListSection({
                   <p className={styles.chatLastMssg}>{friend.email}</p>
                 </div>
                 {!existingChat && (
-                  <button className={styles.startChatBtn} onClick={() => handleStartChatClick(friend)}>
+                  <button
+                    className={styles.startChatBtn}
+                    onClick={() => handleStartChatClick(friend)}
+                  >
                     Start Chat
                   </button>
                 )}
@@ -137,8 +151,6 @@ export default function ChatsListSection({
             );
           })}
         </div>
-          
-
       )}
 
       {/* Chats list */}

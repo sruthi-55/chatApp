@@ -29,7 +29,18 @@ export default function Homepage() {
   const [activeChat, setActiveChat] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   
-  const socket = useSocket(user, activeChat, setChats, setChatMessages);
+  // 🔥 local ref to store setFriends function from ChatsListSection
+  const setFriendsRef = useRef(null);
+
+  // socket (now passes setFriendsRef to keep friends list updated)
+  const socket = useSocket(
+    user,
+    activeChat,
+    setChats,
+    setChatMessages,
+    null,                       // no setFriendStatus here
+    setFriendsRef.current       // 🔥 pass ref.current (the function from ChatsListSection)
+  );
 
   const [selectedSection, setSelectedSection] = useState("allChats");
   const [viewingUser, setViewingUser] = useState(null);
@@ -100,6 +111,9 @@ export default function Homepage() {
               onSearchUserClick={handleViewUserProfile}
               setChats={setChats}
               socket={socket.current}
+              registerSetFriends={(fn) => {  
+                setFriendsRef.current = fn;   // 🔥 pass setFriends back up for socket to use
+              }}
             />
           </aside>
 

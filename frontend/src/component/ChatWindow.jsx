@@ -3,7 +3,7 @@ import styles from "./ChatWindow.module.css";
 import SearchIcon from "../assets/icons/search.svg";
 import MoreIcon from "../assets/icons/more.svg";
 import api from "../api/axios";
-import { getFriendStatus, acceptFriendRequest, rejectFriendRequest } from "../api/friends";
+import { acceptFriendRequest, rejectFriendRequest } from "../api/friends";
 
 export default function ChatWindow({
   activeChat,
@@ -19,6 +19,12 @@ export default function ChatWindow({
   const [currentRequestId, setCurrentRequestId] = useState(null); // store request id for accept/reject
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const viewingUserRef = useRef(viewingUser); // keep latest viewingUser
+
+  // update ref when viewingUser changes
+  useEffect(() => {
+    viewingUserRef.current = viewingUser;
+  }, [viewingUser]);
 
   // scroll to bottom helper
   const scrollToBottom = (behavior = "auto") => {
@@ -51,6 +57,59 @@ export default function ChatWindow({
     fetchStatus();
   }, [viewingUser]);
 
+  // subscribe to socket updates for friend status
+  useEffect(() => {
+    if (!socket?.current) return;
+
+    const handleSent = (req) => {
+      const vu = viewingUserRef.current;
+      if (!vu) return;
+
+      // If I’m the receiver, status should be pending
+      if (req.receiver.id === user.id && vu.id === req.sender.id) {
+        setFriendStatus("pending");
+        setCurrentRequestId(req.id);
+      }
+      // If I’m the sender, status is "sent"
+      if (req.sender.id === user.id && vu.id === req.receiver.id) {
+        setFriendStatus("sent");
+        setCurrentRequestId(req.id);
+      }
+    };
+
+    const handleAccepted = (req) => {
+      const vu = viewingUserRef.current;
+      if (
+        (req.sender.id === user.id && vu?.id === req.receiver.id) ||
+        (req.receiver.id === user.id && vu?.id === req.sender.id)
+      ) {
+        setFriendStatus("friends");
+        setCurrentRequestId(null);
+      }
+    };
+
+    const handleRejected = (req) => {
+      const vu = viewingUserRef.current;
+      if (
+        (req.sender.id === user.id && vu?.id === req.receiver.id) ||
+        (req.receiver.id === user.id && vu?.id === req.sender.id)
+      ) {
+        setFriendStatus("none");
+        setCurrentRequestId(null);
+      }
+    };
+
+    socket.current.on("friendRequestSent", handleSent);
+    socket.current.on("friendRequestAccepted", handleAccepted);
+    socket.current.on("friendRequestRejected", handleRejected);
+
+    return () => {
+      socket.current.off("friendRequestSent", handleSent);
+      socket.current.off("friendRequestAccepted", handleAccepted);
+      socket.current.off("friendRequestRejected", handleRejected);
+    };
+  }, [socket, user]);
+
   // handle sending a new message
   const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
@@ -65,7 +124,7 @@ export default function ChatWindow({
       scrollToBottom("smooth");
 
       // send via socket
-      socket?.emit("sendMessage", { ...res.data, chat_id: activeChat.id });
+      socket?.current?.emit("sendMessage", { ...res.data, chat_id: activeChat.id });
     } catch (err) {
       console.error("Send message error:", err);
     }
@@ -84,13 +143,11 @@ export default function ChatWindow({
         );
 
         if (res.data.length > 0) {
-          // prepend older messages and keep scroll at same position
           const container = messagesContainerRef.current;
           const scrollHeightBefore = container.scrollHeight;
 
           setChatMessages((prev) => [...res.data.reverse(), ...prev]);
 
-          // adjust scroll so user stays at the same position
           setTimeout(() => {
             const scrollHeightAfter = container.scrollHeight;
             container.scrollTop = scrollHeightAfter - scrollHeightBefore;
@@ -125,6 +182,7 @@ export default function ChatWindow({
     try {
       await acceptFriendRequest(currentRequestId);
       setFriendStatus("friends");
+      setCurrentRequestId(null);
     } catch (err) {
       console.error("Accept request error:", err);
     }
@@ -135,6 +193,7 @@ export default function ChatWindow({
     try {
       await rejectFriendRequest(currentRequestId);
       setFriendStatus("none");
+      setCurrentRequestId(null);
     } catch (err) {
       console.error("Reject request error:", err);
     }
@@ -164,18 +223,14 @@ export default function ChatWindow({
             {friendStatus === "none" && (
               <button onClick={sendFriendRequest}>Add Friend</button>
             )}
-            {friendStatus === "sent" && (
-              <button disabled>Request Sent</button>
-            )}
+            {friendStatus === "sent" && <button disabled>Request Sent</button>}
             {friendStatus === "pending" && (
               <>
                 <button onClick={handleAccept}>Accept</button>
                 <button onClick={handleReject}>Reject</button>
               </>
             )}
-            {friendStatus === "friends" && (
-              <button disabled>Friends</button>
-            )}
+            {friendStatus === "friends" && <button disabled>Friends</button>}
             <button onClick={() => setViewingUser(null)}>Back</button>
           </div>
         </div>
@@ -185,11 +240,7 @@ export default function ChatWindow({
 
   // no active chat
   if (!activeChat)
-    return (
-      <div className={styles.noChatSelected}>
-        Select a chat to start messaging
-      </div>
-    );
+    return <div className={styles.noChatSelected}>Select a chat to start messaging</div>;
 
   // active chat
   return (

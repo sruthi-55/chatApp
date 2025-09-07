@@ -43,8 +43,20 @@ async function createUser(userObj) {
   }
 }
 
+async function getUserById(userId) {
+  const client = await pool.connect();
+  try {
+    const sqlQuery = "SELECT id, username, avatar, full_name FROM users WHERE id = $1";
+    const res = await client.query(sqlQuery, [userId]);
+    return res.rows[0];
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   findUserByUsernameOrEmail,
   checkUserExists,
   createUser,
+  getUserById,
 };

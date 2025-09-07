@@ -1,32 +1,37 @@
-const http = require('http');       // node's built-in http module
-const app = require('./index');     // express app
-const { Server } = require('socket.io');    
+const http = require('http');
+const app = require('./index');
+const { Server } = require('socket.io');
+const { setSocketInstance, onlineUsers } = require('./utils/socket');  // 🔥 import socket utility
 
 const PORT = process.env.PORT || 5001;
 
-// convert express app to http server
+// create HTTP server
 const server = http.createServer(app);
-// wraps your Express app so it can handle both - normal HTTP requests and WebSocket connections
-
 
 // create Socket.IO server
-// attaches websocket server (Socket.IO) to http server
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173", // your frontend
+    origin: "http://localhost:5173",
     methods: ["GET", "POST"],
-    credentials: true,               // allows cookies/headers for authentication
+    credentials: true,
   },
 });
 
+// register io instance in socket utils
+setSocketInstance(io);  // 🔥 now other files can safely access io
 
-// handle real-time client connections
-// runs whenever a new client connects
+// handle connections
 io.on("connection", (socket) => {
   console.log("New client connected:", socket.id);
 
+  // when a client tells us who they are
+  socket.on("registerUser", (userId) => {
+    onlineUsers.set(userId, socket.id);
+    console.log(`User ${userId} registered with socket ${socket.id}`);
+  });
+
   socket.on("joinRoom", (chatId) => {
-    socket.join(chatId);    // join chat room - puts the socket into a room identified by chatId
+    socket.join(chatId);
   });
 
   socket.on("sendMessage", (message) => {
@@ -34,12 +39,20 @@ io.on("connection", (socket) => {
     socket.to(message.chat_id).emit("newMessage", message);
   });
 
-  socket.on("disconnect", () => console.log("Client disconnected:", socket.id));
+  socket.on("disconnect", () => {
+    console.log("Client disconnected:", socket.id);
+    for (let [userId, sockId] of onlineUsers.entries()) {
+      if (sockId === socket.id) {
+        onlineUsers.delete(userId);
+        break;
+      }
+    }
+  });
 });
 
-
-// starts your express + Socket.IO backend server
-// listens for both HTTP requests and websocket connections
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+// 🔥 export server only, io handled via utils/socket
+module.exports = { server };

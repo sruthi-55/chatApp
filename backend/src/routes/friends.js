@@ -6,13 +6,15 @@ const {
   updateFriendRequestStatus,
   getAllFriends,
 } = require("../models/Friend");
+const { getUserById } = require("../models/User");
+const { getSocketInstance, onlineUsers } = require("../utils/socket");
 
 const pool = require("../utils/db");
 const router = express.Router();
 
 //# get all friends of logged-in user
 router.get("/", authMiddleware, async (req, res) => {
-  const userId = req.userId; // or req.user.id depending on your middleware
+  const userId = req.userId; // 🔥 extracted from token
 
   try {
     const friends = await getAllFriends(userId);
@@ -27,18 +29,46 @@ router.get("/", authMiddleware, async (req, res) => {
 //# send friend request
 router.post("/request", authMiddleware, async (req, res) => {
   try {
-    // frontend should send { receiver_id }
     const { receiver_id } = req.body;
-    if (!receiver_id) 
-      return res.status(400).json({ message: "receiver_id required" });     // Bad request
+    if (!receiver_id)
+      return res.status(400).json({ message: "receiver_id required" });
 
+    // create the friend request in DB
     const fr = await createFriendRequest(req.userId, Number(receiver_id));
-    res.status(201).json({ message: "Friend request sent", request: fr });      // new res created on server
+
+    // fetch sender and receiver details
+    const sender = await getUserById(req.userId);     // fetch sender info (id, username, avatar, etc.)
+    const receiver = await getUserById(Number(receiver_id)); // fetch receiver info
+
+    // emit socket event to receiver if online
+    const io = getSocketInstance();  // safely get io instance
+    const receiverSocketId = onlineUsers.get(Number(receiver_id));
+
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("friendRequestSent", {
+        id: fr.id,
+        sender: {
+          id: sender.id,
+          username: sender.username,
+          avatar: sender.avatar,
+        },
+        receiver: {
+          id: receiver.id,
+          username: receiver.username,
+          avatar: receiver.avatar,
+        },
+        status: "pending",
+        createdAt: fr.createdAt,
+      });
+    }
+
+    res.status(201).json({ message: "Friend request sent", request: fr });
   } catch (err) {
     console.error("Send friend request error:", err);
-    res.status(err.status || 500).json({ message: err.message || "Server error" });     // Internal Server Error
+    res.status(err.status || 500).json({ message: err.message || "Server error" });
   }
 });
+
 
 
 //# get all friend requests (incoming + outgoing) 
@@ -77,10 +107,19 @@ router.get("/requests/pending", authMiddleware, async (req, res) => {
 router.post("/requests/:id/accept", authMiddleware, async (req, res) => {
   try {
     const updated = await updateFriendRequestStatus(req.params.id, req.userId, "accepted");
+
+    const io = getSocketInstance();  // 🔥 get io instance
+    const senderSocketId = onlineUsers.get(updated.sender_id);
+    const receiverSocketId = onlineUsers.get(updated.receiver_id);
+
+    [senderSocketId, receiverSocketId].forEach((sid) => {
+      if (sid) io.to(sid).emit("friendRequestAccepted", updated);
+    });
+
     res.json({ message: "Request accepted", request: updated });
   } catch (err) {
     console.error("Accept request error:", err);
-    res.status(err.status || 500).json({ message: err.message || "Server error" });     // Internal Server Error
+    res.status(err.status || 500).json({ message: err.message || "Server error" });
   }
 });
 
@@ -89,13 +128,21 @@ router.post("/requests/:id/accept", authMiddleware, async (req, res) => {
 router.post("/requests/:id/reject", authMiddleware, async (req, res) => {
   try {
     const updated = await updateFriendRequestStatus(req.params.id, req.userId, "rejected");
+
+    const io = getSocketInstance();  // 🔥 get io instance
+    const senderSocketId = onlineUsers.get(updated.sender_id);
+    const receiverSocketId = onlineUsers.get(updated.receiver_id);
+
+    [senderSocketId, receiverSocketId].forEach((sid) => {
+      if (sid) io.to(sid).emit("friendRequestRejected", updated);
+    });
+
     res.json({ message: "Request rejected", request: updated });
   } catch (err) {
     console.error("Reject request error:", err);
-    res.status(err.status || 500).json({ message: err.message || "Server error" });     // Internal Server Error
+    res.status(err.status || 500).json({ message: err.message || "Server error" });
   }
 });
-
 
 //# get friendship/request status with another user
 router.get("/status/:id", authMiddleware, async (req, res) => {
