@@ -1,34 +1,49 @@
 const pool = require("../utils/db");
+const { getUserById } = require("./User");
 
 //# fetch all chats for a user along with last message
 async function getUserChats(userId) {
   const client = await pool.connect();
   try {
     const sqlQuery = `
-      SELECT c.id, c.name, c.is_group,
-             json_agg(cm.user_id) as memberIds,   
-             lm.id as last_message_id,
-             lm.content as last_message_content,
-             lm.sender_id as last_message_sender
+      SELECT 
+        c.id, 
+        c.name, 
+        c.is_group,
+        c.members,   
+        lm.id as last_message_id,
+        lm.content as last_message_content,
+        lm.sender_id as last_message_sender
       FROM chats c
-      JOIN chat_members cm ON c.id = cm.chat_id
       LEFT JOIN LATERAL (
-        SELECT * FROM messages m
-        WHERE m.chat_id = c.id
-        ORDER BY m.created_at DESC
-        LIMIT 1
+          SELECT * FROM messages m
+          WHERE m.chat_id = c.id
+          ORDER BY m.created_at DESC
+          LIMIT 1
       ) lm ON true
-      WHERE cm.user_id = $1   
-      GROUP BY c.id, lm.id, lm.content, lm.sender_id
-      ORDER BY lm.id DESC NULLS LAST
+      WHERE $1 = ANY(c.members)
+      ORDER BY lm.created_at DESC NULLS LAST
     `;
     const res = await client.query(sqlQuery, [userId]);
-    return res.rows;
+    
+    // map member IDs to full user objects
+    const chatsWithMembers = await Promise.all(res.rows.map(async (chat) => {
+      const memberIds = chat.members; // now an integer array
+      if (!memberIds || !memberIds.length) return chat;
+
+      const { rows: members } = await client.query(
+        `SELECT id, username, avatar FROM users WHERE id = ANY($1)`,
+        [memberIds]
+      );
+
+      return { ...chat, members };
+    }));
+
+    return chatsWithMembers;
   } finally {
     client.release();
   }
 }
-
 
 //# fetch messages of a chat in chronological order
 async function getChatMessages(chatId) {
@@ -47,7 +62,6 @@ async function getChatMessages(chatId) {
   }
 }
 
-
 //# create a new message 
 async function createMessage(chatId, senderId, content) {
   const client = await pool.connect();
@@ -64,7 +78,6 @@ async function createMessage(chatId, senderId, content) {
   }
 }
 
-
 //# create/get a direct chat between two users 
 async function createOrGetDirectChat(user1Id, user2Id) {
   const client = await pool.connect();
@@ -73,34 +86,45 @@ async function createOrGetDirectChat(user1Id, user2Id) {
 
     // check if chat already exists with both members
     const checkSql = `
-      SELECT c.id
+      SELECT c.id, c.members
       FROM chats c
-      JOIN chat_members m1 ON c.id = m1.chat_id AND m1.user_id = $1
-      JOIN chat_members m2 ON c.id = m2.chat_id AND m2.user_id = $2
       WHERE c.is_group = false
+        AND $1 = ANY(c.members)
+        AND $2 = ANY(c.members)
       LIMIT 1
     `;
     const checkRes = await client.query(checkSql, [user1Id, user2Id]);
 
     if (checkRes.rows.length > 0) {
+      const members = await client.query(
+        `SELECT id, username, avatar FROM users WHERE id = ANY($1)`,
+        [checkRes.rows[0].members]
+      );
       await client.query("COMMIT");
-      return checkRes.rows[0]; // existing chat
+      return { id: checkRes.rows[0].id, members: members.rows }; // existing chat with full members
     }
 
     // create chat
     const insertChat = await client.query(
-      `INSERT INTO chats (is_group) VALUES (false) RETURNING id`
+      `INSERT INTO chats (is_group, members) VALUES (false, $1) RETURNING id`,
+      [[user1Id, user2Id]] // pass integer array directly
     );
     const chatId = insertChat.rows[0].id;
 
-    // add both users as members
+    // also populate chat_members table
     await client.query(
       `INSERT INTO chat_members (chat_id, user_id) VALUES ($1, $2), ($1, $3)`,
       [chatId, user1Id, user2Id]
     );
 
+    // fetch full user info for members
+    const { rows: members } = await client.query(
+      `SELECT id, username, avatar FROM users WHERE id = ANY($1)`,
+      [[user1Id, user2Id]]
+    );
+
     await client.query("COMMIT");
-    return { id: chatId };
+    return { id: chatId, members }; // return full chat object with members
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;

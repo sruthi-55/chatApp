@@ -16,13 +16,11 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
-
 //# get messages of a chat with optional pagination
 router.get("/:chatId/messages", authMiddleware, async (req, res) => {
   try {
     const { chatId } = req.params;
     const { limit = 20, before } = req.query;
-    // limit - no. of mssgs, before - fetch older messages
 
     const messages = await getMessagesByChatId(
       chatId,
@@ -35,7 +33,6 @@ router.get("/:chatId/messages", authMiddleware, async (req, res) => {
     res.status(500).json({ message: "Server error" });      // Internal Server Error
   }
 });
-
 
 //# send a message
 router.post("/:chatId/messages", authMiddleware, async (req, res) => {
@@ -53,7 +50,6 @@ router.post("/:chatId/messages", authMiddleware, async (req, res) => {
   }
 });
 
-
 //# start a direct chat with a friend
 router.post("/start", authMiddleware, async (req, res) => {
   try {
@@ -62,13 +58,11 @@ router.post("/start", authMiddleware, async (req, res) => {
 
     // Use req.userId instead of req.user.id
     const chat = await createOrGetDirectChat(req.userId, friendId);
-    res.json(chat);
+    res.json(chat); // full chat object with members
   } catch (err) {
     console.error("Start chat error:", err);
     res.status(500).json({ error: err.message });
   }
 });
-
-
 
 module.exports = router;

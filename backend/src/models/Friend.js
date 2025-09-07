@@ -23,6 +23,7 @@ async function getAllFriends(userId) {
     client.release();
   }
 }
+
 //# create a friend request
 async function createFriendRequest(senderId, receiverId) {
   if (!receiverId) throw new Error("receiverId required");
@@ -132,22 +133,21 @@ async function updateFriendRequestStatus(requestId, userId, newStatus) {
       [requestId]
     );
 
-    // if friend request doesn't exist
     if (frRes.rows.length === 0) {
       const err = new Error("Request not found");
-      err.status = 404;     // not found
+      err.status = 404;
       throw err;
     }
 
     const fr = frRes.rows[0];
     if (fr.receiver_id !== Number(userId)) {
       const err = new Error("Not authorized to update this request");
-      err.status = 403;     // forbidden
+      err.status = 403;
       throw err;
     }
     if (fr.status !== "pending") {
       const err = new Error("Request already processed");
-      err.status = 400;     // bad request
+      err.status = 400;
       throw err;
     }
 
@@ -160,7 +160,6 @@ async function updateFriendRequestStatus(requestId, userId, newStatus) {
       [newStatus, requestId]
     );
 
-    // if accepted, insert into friendships
     if (newStatus === "accepted") {
       await client.query(
         `INSERT INTO friendships (user1_id, user2_id)
@@ -168,15 +167,33 @@ async function updateFriendRequestStatus(requestId, userId, newStatus) {
          ON CONFLICT (user1_id, user2_id) DO NOTHING`,
         [fr.sender_id, fr.receiver_id]
       );
-      // optional: also insert the reverse order to avoid ordering issues
       await client.query(
         `INSERT INTO friendships (user1_id, user2_id)
          VALUES ($1, $2)
          ON CONFLICT (user1_id, user2_id) DO NOTHING`,
         [fr.receiver_id, fr.sender_id]
       );
+
+      //# create 1-on-1 chat for the two users
+      const chatRes = await client.query(
+        `INSERT INTO chats (name, is_group, created_by, members)
+         VALUES ($1, FALSE, $2, $3)
+         RETURNING id, name, is_group, created_by, members`,
+        [
+          null,
+          fr.sender_id,
+          [fr.sender_id, fr.receiver_id], // integer array now
+        ]
+      );
+
+      const chatId = chatRes.rows[0].id;
+
+      await client.query(
+        `INSERT INTO chat_members (chat_id, user_id) VALUES ($1, $2), ($1, $3)`,
+        [chatId, fr.sender_id, fr.receiver_id]
+      );
     }
-    
+
     await client.query("COMMIT");
     return updRes.rows[0];
   } catch (e) {

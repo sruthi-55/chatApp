@@ -11,10 +11,29 @@
   padding: 10px;
   cursor: pointer;
   border-bottom: 1px solid #eee;
+  justify-content: space-between;
 }
 
 .chatItem:hover {
   background-color: #112D4E;
+}
+
+.startChatBtn{
+  margin-right: 0px;
+  width: 90px;
+  padding: 6px 1px;
+  border: none;
+  border-radius: 100px;
+  background: #CDE3EB;
+  color: black;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 200;
+}
+
+.startChatBtn:hover{
+  background-color: #112D4E;
+  color: white;
 }
 
 .activeChat {
@@ -120,3 +139,5 @@
 .closeOverlayBtn:hover {
   background-color: #5d727a;
 }
+
+

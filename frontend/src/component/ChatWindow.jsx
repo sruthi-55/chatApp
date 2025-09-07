@@ -36,6 +36,12 @@ export default function ChatWindow({
     scrollToBottom("auto");
   }, [chatMessages]);
 
+  //# determine other user for 1-on-1 chat
+  const otherUser =
+    !activeChat?.is_group && activeChat?.members
+      ? activeChat.members.find((m) => m.id !== user.id)
+      : null;
+
   // fetch relationship status when viewing a user
   useEffect(() => {
     if (!viewingUser) return;
@@ -124,7 +130,10 @@ export default function ChatWindow({
       scrollToBottom("smooth");
 
       // send via socket
-      socket?.current?.emit("sendMessage", { ...res.data, chat_id: activeChat.id });
+      socket?.current?.emit("sendMessage", {
+        ...res.data,
+        chat_id: activeChat.id,
+      });
     } catch (err) {
       console.error("Send message error:", err);
     }
@@ -240,7 +249,11 @@ export default function ChatWindow({
 
   // no active chat
   if (!activeChat)
-    return <div className={styles.noChatSelected}>Select a chat to start messaging</div>;
+    return (
+      <div className={styles.noChatSelected}>
+        Select a chat to start messaging
+      </div>
+    );
 
   // active chat
   return (
@@ -248,7 +261,11 @@ export default function ChatWindow({
       {/* chat header */}
       <div className={styles.chatHeader}>
         <div>
-          <div className={styles.chatName}>{activeChat.name}</div>
+          <div className={styles.chatName}>
+            {activeChat.is_group
+              ? activeChat.name
+              : otherUser?.username || "Chat"}
+          </div>
           <div className={styles.lastSeen}>last seen just now</div>
         </div>
         <div className={styles.headerIcons}>
@@ -261,15 +278,13 @@ export default function ChatWindow({
       <div
         className={styles.messages}
         onScroll={handleScroll}
-        ref={messagesContainerRef}
-      >
+        ref={messagesContainerRef}>
         {chatMessages.map((msg) => (
           <div
             key={msg.id}
             className={`${styles.message} ${
               msg.sender_id === user.id ? styles.sent : styles.received
-            }`}
-          >
+            }`}>
             {msg.content}
           </div>
         ))}

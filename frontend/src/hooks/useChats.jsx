@@ -14,7 +14,7 @@ export default function useChats(user) {
           id: chat.id,
           name: chat.is_group
             ? chat.name
-            : `Chat with ${chat.memberids.find((id) => id !== user.id)}`,
+            : `Chat with ${chat.members.find((id) => id !== user.id)}`, // updated
           lastMessage: chat.last_message_content || "",
           type: chat.is_group ? "group" : "friend",
         }));
