@@ -11,9 +11,9 @@ export default function ChatsListSection({
   onSearchUserClick,
   setChats,
   socket,
-  registerSetFriends,   // 🔥 NEW PROP: parent passes down to register setFriends
+  registerSetFriends, // 🔥 NEW PROP: parent passes down to register setFriends
 }) {
-  const [friends, setFriends] = useState([]); 
+  const [friends, setFriends] = useState([]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [results, setResults] = useState([]);
@@ -70,16 +70,16 @@ export default function ChatsListSection({
     onSearchUserClick(user);
   };
 
-  // start chat 
+  // start chat
   const handleStartChatClick = async (friend) => {
     try {
-      const newChat = await startChat(friend.id); 
-      setActiveChat(newChat);                     
-      setChats((prev) => [newChat, ...prev]);      
+      const newChat = await startChat(friend.id);
+      setActiveChat(newChat);
+      setChats((prev) => [newChat, ...prev]);
 
       // ✅ safer: only emit if socket is alive
       if (socket) {
-        socket.emit("joinChat", newChat.id);        // join WebSocket room
+        socket.emit("joinChat", newChat.id); // join WebSocket room
       }
     } catch (err) {
       console.error("Start chat failed:", err);
@@ -110,8 +110,7 @@ export default function ChatsListSection({
                     className={styles.searchResult}
                     onClick={() => handleResultClick(user)}
                     role="option"
-                    tabIndex={0}
-                  >
+                    tabIndex={0}>
                     <div className={styles.resultMain}>
                       <p className={styles.resultName}>{user.username}</p>
                       <small className={styles.resultId}>ID: {user.id}</small>
@@ -121,8 +120,7 @@ export default function ChatsListSection({
                 {(error || results.length > 0) && (
                   <button
                     className={styles.closeOverlayBtn}
-                    onClick={() => setShowOverlay(false)}
-                  >
+                    onClick={() => setShowOverlay(false)}>
                     Close
                   </button>
                 )}
@@ -132,18 +130,24 @@ export default function ChatsListSection({
 
           {/* friends chats here */}
           {friends.map((friend) => {
-            const existingChat = chats.find((c) => c.members?.includes(friend.id));
+            const existingChat = chats.find((c) =>
+              c.members?.includes(friend.id)
+            );
+            const hasMessages =
+              existingChat?.lastMessage || existingChat?.messages?.length > 0;
+
             return (
               <div key={friend.id} className={styles.chatItem}>
                 <div className={styles.chatInfo}>
                   <p className={styles.chatName}>{friend.username}</p>
                   <p className={styles.chatLastMssg}>{friend.email}</p>
                 </div>
-                {!existingChat && (
+
+                {/* 🔥 Show Start Chat button only if chat has no messages yet */}
+                {!hasMessages && (
                   <button
                     className={styles.startChatBtn}
-                    onClick={() => handleStartChatClick(friend)}
-                  >
+                    onClick={() => handleStartChatClick(friend)}>
                     Start Chat
                   </button>
                 )}
@@ -153,24 +157,6 @@ export default function ChatsListSection({
         </div>
       )}
 
-      {/* Chats list */}
-      {chats.map((chat) => (
-        <div
-          key={chat.id}
-          className={`${styles.chatItem} ${
-            activeChat?.id === chat.id ? styles.activeChat : ""
-          }`}
-          onClick={() => {
-            setActiveChat(chat);
-            setShowOverlay(false);  // hide overlay on chat click
-          }}
-        >
-          <div className={styles.chatInfo}>
-            <p className={styles.chatName}>{chat.name}</p>
-            <p className={styles.chatLastMssg}>{chat.lastMessage}</p>
-          </div>
-        </div>
-      ))}
     </div>
   );
 }

@@ -267,6 +267,12 @@ export default function ChatWindow({
               : otherUser?.username || "Chat"}
           </div>
           <div className={styles.lastSeen}>last seen just now</div>
+          {/* 🔥 DEBUG INFO */}
+          <div style={{ fontSize: "10px", color: "red" }}>
+            <p>Chat ID: {activeChat.id}</p>
+            <p>Members: {JSON.stringify(activeChat.members)}</p>
+            <p>Last Message: {activeChat.lastMessage || "None"}</p>
+          </div>
         </div>
         <div className={styles.headerIcons}>
           <img src={SearchIcon} alt="Search" className={styles.icon} />
