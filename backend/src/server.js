@@ -1,7 +1,10 @@
 const http = require('http');
 
-// remove DEBUG_URL if present to prevent Render crash
-if (process.env.DEBUG_URL) delete process.env.DEBUG_URL;
+// 🚨 Render injects DEBUG_URL which breaks Express, remove it
+if (process.env.DEBUG_URL) {
+  console.log("Deleting DEBUG_URL to avoid path-to-regexp crash");
+  delete process.env.DEBUG_URL;
+}
 
 const app = require('./index');
 const { Server } = require('socket.io');
@@ -13,7 +16,7 @@ const PORT = process.env.PORT || 5001;
 const server = http.createServer(app);
 
 // allowed origins for Socket.IO
-const allowedOrigins = [process.env.CLIENT_URL]; // only 1 URL
+const allowedOrigins = [process.env.CLIENT_URL].filter(Boolean);
 
 // create Socket.IO server
 const io = new Server(server, {
@@ -31,7 +34,6 @@ setSocketInstance(io);
 io.on("connection", (socket) => {
   console.log("New client connected:", socket.id);
 
-  // when a client tells us who they are
   socket.on("registerUser", (userId) => {
     onlineUsers.set(userId, socket.id);
     console.log(`User ${userId} registered with socket ${socket.id}`);
@@ -63,3 +65,4 @@ server.listen(PORT, () => {
 
 // export server only
 module.exports = { server };
+    
