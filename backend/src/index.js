@@ -2,14 +2,22 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config(); // loads env variables from .env file into process.env
 
+// 🚨 Render injects DEBUG_URL which breaks Express, remove it
+if (process.env.DEBUG_URL) {
+  console.log("Deleting DEBUG_URL to avoid path-to-regexp crash");
+  delete process.env.DEBUG_URL;
+}
+
 const app = express(); // 1. creates app instance
 
 // 2. Register middleware and routes on app
-const allowedOrigins = [process.env.CLIENT_URL]; // only 1 URL now
+const allowedOrigins = [
+  process.env.CLIENT_URL // only 1 URL now
+].filter(Boolean);
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // allow requests with no origin (like mobile apps / curl)
+    if (!origin) return callback(null, true); // allow requests with no origin
 
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
@@ -30,7 +38,7 @@ app.use(express.json());
 
 // health check route
 app.get('/', (req, res) => {
-  res.send('Chat App Backend is running'); // 200 response with text
+  res.send('Chat App Backend is running');
 });
 
 // 3. import routes
