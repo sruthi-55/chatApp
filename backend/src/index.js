@@ -5,13 +5,11 @@ require('dotenv').config(); // loads env variables from .env file into process.e
 const app = express(); // 1. creates app instance
 
 // 2. Register middleware and routes on app
-const allowedOrigins = [
-  process.env.CLIENT_URL // only 1 URL now
-];
+const allowedOrigins = [process.env.CLIENT_URL]; // only 1 URL now
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // allow requests with no origin
+    if (!origin) return callback(null, true); // allow requests with no origin (like mobile apps / curl)
 
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
@@ -32,8 +30,23 @@ app.use(express.json());
 
 // health check route
 app.get('/', (req, res) => {
-  res.send('Chat App Backend is running');
+  res.send('Chat App Backend is running'); // 200 response with text
 });
+
+// 3. import routes
+const authRoutes = require('./routes/auth');
+const userRoutes = require('./routes/user');
+const chatRoutes = require('./routes/chat');
+const friendsRoutes = require("./routes/friends");
+
+// 4. mounts the router
+app.use('/api/auth', authRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/chats', chatRoutes);
+app.use("/api/friends", friendsRoutes);
+
+// 5. export configured express app
+module.exports = app;
 
 // 3. import routes
 const authRoutes = require('./routes/auth');
