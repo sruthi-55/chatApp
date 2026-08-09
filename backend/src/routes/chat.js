@@ -8,7 +8,12 @@ const {
   createDirectChatWithMessage,
 } = require("../models/Chat");
 
-const { getMessagesByChatId } = require("../models/Message");
+const {
+  getMessagesByChatId,
+  markMessagesAsRead,
+} = require("../models/Message");
+
+const { getSocketInstance, onlineUsers } = require("../utils/socket");
 
 const router = express.Router();
 
@@ -49,6 +54,7 @@ router.get("/:chatId/messages", authMiddleware, async (req, res) => {
 
     const messages = await getMessagesByChatId(
       chatId,
+      req.userId,
       parseInt(limit) || 20,
       before ? parseInt(before) : undefined,
     );
@@ -216,6 +222,152 @@ router.post("/start", authMiddleware, async (req, res) => {
 
     res.status(500).json({
       error: err.message,
+    });
+  }
+});
+
+// ============================================================
+// MARK CHAT MESSAGES AS READ
+//
+// Called by the receiver when messages currently loaded in
+// ChatWindow become visible/read.
+//
+// Body:
+//
+// {
+//   "messageIds": [31, 32, 33]
+// }
+//
+// Only messages sent by OTHER users are marked as read.
+//
+// After the DB update, the sender receives:
+//
+// "messagesRead"
+// ============================================================
+
+router.post("/:chatId/read", authMiddleware, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { messageIds } = req.body;
+
+    console.log("READ REQUEST RECEIVED:", {
+      chatId,
+      userId: req.userId,
+      messageIds,
+    });
+
+    // ========================================================
+    // TEMPORARY CHAT
+    // ========================================================
+
+    if (String(chatId).startsWith("temp-")) {
+      return res.json({
+        messageIds: [],
+      });
+    }
+
+    // ========================================================
+    // VALIDATE MESSAGE IDS
+    // ========================================================
+
+    if (!Array.isArray(messageIds)) {
+      return res.status(400).json({
+        message: "messageIds must be an array",
+      });
+    }
+
+    if (messageIds.length === 0) {
+      return res.json({
+        messageIds: [],
+      });
+    }
+
+    // ========================================================
+    // MARK MESSAGES AS READ IN DATABASE
+    // ========================================================
+
+    console.log("Marking messages as read:", {
+      chatId,
+      userId: req.userId,
+      messageIds,
+    });
+
+    const readMessages = await markMessagesAsRead(
+      Number(chatId),
+      Number(req.userId),
+      messageIds,
+    );
+
+    console.log("Messages successfully marked as read:", readMessages);
+
+    // ========================================================
+    // GET SOCKET.IO INSTANCE
+    // ========================================================
+
+    const socketIO = getSocketInstance();
+
+    // ========================================================
+    // GROUP MESSAGES BY SENDER
+    //
+    // Example:
+    //
+    // sender 9 -> [56, 58]
+    // sender 15 -> [61]
+    //
+    // ========================================================
+
+    const messagesBySender = new Map();
+
+    readMessages.forEach((message) => {
+      const senderId = Number(message.senderId);
+
+      if (!senderId) {
+        return;
+      }
+
+      if (!messagesBySender.has(senderId)) {
+        messagesBySender.set(senderId, []);
+      }
+
+      messagesBySender.get(senderId).push(message.messageId);
+    });
+
+    // ========================================================
+    // NOTIFY EACH SENDER
+    // ========================================================
+
+    for (const [senderId, messageIdsForSender] of messagesBySender) {
+      const senderSocketId = onlineUsers.get(senderId);
+
+      console.log("Read notification:", {
+        senderId,
+        senderSocketId,
+        messageIds: messageIdsForSender,
+      });
+
+      if (!senderSocketId) {
+        continue;
+      }
+
+      socketIO.to(senderSocketId).emit("messagesRead", {
+        chatId: Number(chatId),
+        messageIds: messageIdsForSender,
+        readBy: Number(req.userId),
+      });
+    }
+
+    // ========================================================
+    // RETURN TO RECEIVER
+    // ========================================================
+
+    return res.json({
+      messageIds: readMessages.map((message) => message.messageId),
+    });
+  } catch (err) {
+    console.error("Mark messages as read error:", err);
+
+    return res.status(500).json({
+      message: "Server error",
     });
   }
 });

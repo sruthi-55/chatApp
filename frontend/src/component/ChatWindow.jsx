@@ -228,6 +228,193 @@ export default function ChatWindow({
   ]);
 
   // ============================================================
+  // MARK MESSAGES AS READ
+  //
+  // The current user is the READER.
+  //
+  // We only send IDs of messages:
+  //
+  //   1. belonging to the current chat
+  //   2. sent by another user
+  //   3. currently marked as unread
+  //
+  // Backend then inserts:
+  //
+  //   message_id + current_user_id
+  //
+  // into message_reads.
+  // ============================================================
+
+  useEffect(() => {
+    if (
+      !activeChat?.id ||
+      activeChat.isTemporary ||
+      !user?.id ||
+      !Array.isArray(chatMessages) ||
+      chatMessages.length === 0
+    ) {
+      return;
+    }
+
+    const unreadMessageIds = chatMessages
+      .filter((message) => {
+        const isIncoming = Number(message.sender_id) !== Number(user.id);
+
+        const isUnread = message.is_read !== true;
+
+        const hasValidId =
+          Number.isInteger(Number(message.id)) && Number(message.id) > 0;
+
+        return isIncoming && isUnread && hasValidId;
+      })
+      .map((message) => Number(message.id));
+
+    if (unreadMessageIds.length === 0) {
+      return;
+    }
+
+    console.log("Sending messages to mark as read:", {
+      chatId: activeChat.id,
+      userId: user.id,
+      messageIds: unreadMessageIds,
+    });
+
+    let cancelled = false;
+
+    const markAsRead = async () => {
+      try {
+        const response = await api.post(`/chats/${activeChat.id}/read`, {
+          messageIds: unreadMessageIds,
+        });
+
+        console.log("Mark as read response:", response.data);
+
+        if (cancelled) {
+          return;
+        }
+
+        const markedMessageIds = new Set(
+          (response.data.messageIds || []).map(Number),
+        );
+
+        if (markedMessageIds.size === 0) {
+          return;
+        }
+
+        // Immediately update local receiver state.
+        setChatMessages((prev) =>
+          prev.map((message) =>
+            markedMessageIds.has(Number(message.id))
+              ? {
+                  ...message,
+                  is_read: true,
+                }
+              : message,
+          ),
+        );
+      } catch (err) {
+        console.error(
+          "Failed to mark messages as read:",
+          err.response?.data || err,
+        );
+      }
+    };
+
+    markAsRead();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeChat?.id,
+    activeChat?.isTemporary,
+    chatMessages,
+    user?.id,
+    setChatMessages,
+  ]);
+
+  // ============================================================
+  // RECEIVE MESSAGE READ EVENTS
+  //
+  // Receiver has read one or more messages that WE sent.
+  //
+  // Backend sends:
+  //
+  // {
+  //   chatId: 5,
+  //   messageIds: [31, 32],
+  //   readBy: 7
+  // }
+  //
+  // We update our sent messages:
+  //
+  //     ✓  →  ✓✓
+  // ============================================================
+
+  useEffect(() => {
+    if (!socket?.current || !activeChat?.id) {
+      return;
+    }
+
+    const handleMessagesRead = (data) => {
+      if (String(data.chatId) !== String(activeChat.id)) {
+        return;
+      }
+
+      const readMessageIds = new Set((data.messageIds || []).map(Number));
+
+      if (readMessageIds.size === 0) {
+        return;
+      }
+
+      setChatMessages((prev) =>
+        prev.map((message) =>
+          readMessageIds.has(Number(message.id))
+            ? {
+                ...message,
+                is_read: true,
+              }
+            : message,
+        ),
+      );
+    };
+
+    socket.current.on("messagesRead", handleMessagesRead);
+
+    return () => {
+      socket.current?.off("messagesRead", handleMessagesRead);
+    };
+  }, [socket, activeChat?.id, setChatMessages]);
+
+  // ============================================================
+  // JOIN ACTIVE CHAT SOCKET ROOM
+  // ============================================================
+  //
+  // This makes sure the current user receives realtime
+  // messages for the chat they opened.
+  //
+  // It is separate from the HTTP read-receipt mechanism.
+  // ============================================================
+
+  useEffect(() => {
+    if (!socket?.current || !activeChat?.id || activeChat.isTemporary) {
+      return;
+    }
+
+    const chatId = String(activeChat.id);
+
+    console.log("Joining chat room:", chatId);
+
+    socket.current.emit("joinRoom", chatId);
+
+    return () => {
+      console.log("Leaving chat room:", chatId);
+
+      socket.current?.emit("leaveRoom", chatId);
+    };
+  }, [socket, activeChat?.id, activeChat?.isTemporary]);
+
+  // ============================================================
   // SEND MESSAGE
   // ============================================================
 
@@ -541,17 +728,25 @@ export default function ChatWindow({
         className={styles.messages}
         onScroll={handleScroll}
         ref={messagesContainerRef}>
-        {chatMessages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`${styles.message} ${
-              Number(msg.sender_id) === Number(user.id)
-                ? styles.sent
-                : styles.received
-            }`}>
-            {msg.content}
-          </div>
-        ))}
+        {chatMessages.map((msg) => {
+          const isSentByCurrentUser = Number(msg.sender_id) === Number(user.id);
+
+          return (
+            <div
+              key={msg.id}
+              className={`${styles.message} ${
+                isSentByCurrentUser ? styles.sent : styles.received
+              }`}>
+              <span>{msg.content}</span>
+
+              {isSentByCurrentUser && (
+                <span className={styles.readStatus}>
+                  {msg.is_read ? "✓✓" : "✓"}
+                </span>
+              )}
+            </div>
+          );
+        })}
 
         <div ref={messagesEndRef} />
       </div>

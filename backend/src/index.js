@@ -2,7 +2,7 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config(); // loads env variables from .env file into process.env
 
-// 🚨 Render injects DEBUG_URL which breaks Express, remove it
+// Render injects DEBUG_URL which breaks Express, remove it
 if (process.env.DEBUG_URL) {
   console.log("Deleting DEBUG_URL to avoid path-to-regexp crash");
   delete process.env.DEBUG_URL;
@@ -33,7 +33,7 @@ app.use(
 );
 
 // handle preflight requests for all routes
-app.options("*", cors());
+app.options("/*splat", cors());
 
 // body parser - parses JSON req body and populates req.body
 app.use(express.json());

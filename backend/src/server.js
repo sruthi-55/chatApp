@@ -1,65 +1,126 @@
 const http = require("http");
 
-// remove DEBUG_URL if present to prevent Render crash
-if (process.env.DEBUG_URL) delete process.env.DEBUG_URL;
+if (process.env.DEBUG_URL) {
+  delete process.env.DEBUG_URL;
+}
 
 const app = require("./index");
+
 const { Server } = require("socket.io");
-const { setSocketInstance, onlineUsers } = require("./utils/socket"); // import socket utility
+
+const { setSocketInstance, onlineUsers } = require("./utils/socket");
 
 const PORT = process.env.PORT || 5001;
 
-// create HTTP server
 const server = http.createServer(app);
 
-// allowed origins for Socket.IO
-const allowedOrigins = [process.env.CLIENT_URL]; // only 1 URL
+// ============================================================
+// SOCKET.IO
+// ============================================================
 
-// create Socket.IO server
+const allowedOrigins = [process.env.CLIENT_URL].filter(Boolean);
+
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
-    methods: ["GET", "POST", "OPTIONS"], // include OPTIONS for preflight
+    methods: ["GET", "POST", "OPTIONS"],
     credentials: true,
   },
 });
 
-// register io instance in socket utils
+// Make Socket.IO available to routes.
 setSocketInstance(io);
 
-// handle connections
+// ============================================================
+// SOCKET CONNECTION
+// ============================================================
+
 io.on("connection", (socket) => {
   console.log("New client connected:", socket.id);
 
-  // when a client tells us who they are
+  // ==========================================================
+  // REGISTER USER
+  // ==========================================================
+
   socket.on("registerUser", (userId) => {
-    onlineUsers.set(userId, socket.id);
-    console.log(`User ${userId} registered with socket ${socket.id}`);
+    const parsedUserId = Number(userId);
+
+    if (!Number.isInteger(parsedUserId)) {
+      return;
+    }
+
+    onlineUsers.set(parsedUserId, socket.id);
+
+    console.log(`User ${parsedUserId} registered with socket ${socket.id}`);
   });
 
+  // ==========================================================
+  // JOIN CHAT ROOM
+  // ==========================================================
+
   socket.on("joinRoom", (chatId) => {
-    socket.join(chatId);
+    if (!chatId) {
+      return;
+    }
+
+    socket.join(String(chatId));
+
+    console.log(`Socket ${socket.id} joined chat ${chatId}`);
   });
+
+  // ==========================================================
+  // LEAVE CHAT ROOM
+  // ==========================================================
+
+  socket.on("leaveRoom", (chatId) => {
+    if (!chatId) {
+      return;
+    }
+
+    socket.leave(String(chatId));
+
+    console.log(`Socket ${socket.id} left chat ${chatId}`);
+  });
+
+  // ==========================================================
+  // SEND MESSAGE
+  // ==========================================================
 
   socket.on("sendMessage", (message) => {
     console.log("Server got sendMessage:", message);
-    io.to(message.chat_id).emit("newMessage", message);
+
+    if (!message?.chat_id) {
+      return;
+    }
+
+    io.to(String(message.chat_id)).emit("newMessage", message);
   });
+
+  // ==========================================================
+  // DISCONNECT
+  // ==========================================================
 
   socket.on("disconnect", () => {
     console.log("Client disconnected:", socket.id);
-    for (let [userId, sockId] of onlineUsers.entries()) {
-      if (sockId === socket.id) {
+
+    for (const [userId, socketId] of onlineUsers.entries()) {
+      if (socketId === socket.id) {
         onlineUsers.delete(userId);
+
         break;
       }
     }
   });
 });
 
+// ============================================================
+// START SERVER
+// ============================================================
+
 server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
 
-// export server only
-module.exports = { server };
+module.exports = {
+  server,
+};

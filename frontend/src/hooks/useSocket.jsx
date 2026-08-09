@@ -12,8 +12,7 @@ export default function useSocket(
 ) {
   const socket = useRef(null);
 
-  // Keep the latest active chat without recreating
-  // the socket connection.
+  // Keep latest active chat available if needed later.
   const activeChatRef = useRef(activeChat);
 
   useEffect(() => {
@@ -29,16 +28,6 @@ export default function useSocket(
       return;
     }
 
-    /*
-     * IMPORTANT:
-     *
-     * The socket should be created only once for the current user.
-     *
-     * We depend on user.id instead of the complete user object.
-     * This prevents the socket from being recreated when some
-     * unrelated user state changes.
-     */
-
     const socketInstance = io(import.meta.env.VITE_BACKEND_URL, {
       withCredentials: true,
     });
@@ -46,25 +35,21 @@ export default function useSocket(
     socket.current = socketInstance;
 
     // ============================================================
-    // SOCKET CONNECTED
+    // CONNECT
     // ============================================================
 
     const handleConnect = () => {
       console.log("Socket connected:", socketInstance.id);
 
-      socketInstance.emit("registerUser", user.id);
+      socketInstance.emit("registerUser", Number(user.id));
     };
 
     // ============================================================
     // NEW MESSAGE
     //
-    // IMPORTANT:
+    // This updates CHAT LIST only.
     //
-    // This handler ONLY updates the CHAT LIST.
-    //
-    // It does NOT update chatMessages.
-    //
-    // ChatWindow is responsible for displaying messages.
+    // ChatWindow handles actual chatMessages.
     // ============================================================
 
     const handleNewMessage = (message) => {
@@ -80,10 +65,6 @@ export default function useSocket(
         const existingChat = prevChats.find(
           (chat) => String(chat.id) === String(chatId),
         );
-
-        // ========================================================
-        // CHAT DOES NOT EXIST IN CURRENT CHAT LIST
-        // ========================================================
 
         if (!existingChat) {
           return [
@@ -101,10 +82,6 @@ export default function useSocket(
           ];
         }
 
-        // ========================================================
-        // CHAT ALREADY EXISTS
-        // ========================================================
-
         return prevChats.map((chat) =>
           String(chat.id) === String(chatId)
             ? {
@@ -119,10 +96,6 @@ export default function useSocket(
 
     // ============================================================
     // MESSAGE SENT
-    //
-    // Some socket implementations emit "messageSent" separately.
-    //
-    // We use the same chat-list update logic.
     // ============================================================
 
     const handleMessageSent = (message) => {
@@ -172,7 +145,7 @@ export default function useSocket(
     };
 
     // ============================================================
-    // REGISTER EVENT LISTENERS
+    // REGISTER EVENTS
     // ============================================================
 
     socketInstance.on("connect", handleConnect);
@@ -188,7 +161,7 @@ export default function useSocket(
     socketInstance.on("friendRequestRejected", handleFriendRequestRejected);
 
     // ============================================================
-    // IF ALREADY CONNECTED
+    // ALREADY CONNECTED
     // ============================================================
 
     if (socketInstance.connected) {
