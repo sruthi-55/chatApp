@@ -28,7 +28,7 @@ export default function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<MainPage socket={socket} />} />
+        <Route path="/" element={<MainPage />} />
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
         <Route path="/profile" element={<Profile />} />

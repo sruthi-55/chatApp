@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
+
 import styles from "./ChatWindow.module.css";
-import SearchIcon from "../assets/icons/search.svg";
-import MoreIcon from "../assets/icons/more.svg";
+
 import api from "../api/axios";
+
 import { acceptFriendRequest, rejectFriendRequest } from "../api/friends";
 
 export default function ChatWindow({
@@ -13,48 +14,70 @@ export default function ChatWindow({
   setViewingUser,
   setChatMessages,
   socket,
+  setChats,
+  setActiveChat,
 }) {
   const [newMessage, setNewMessage] = useState("");
-  const [friendStatus, setFriendStatus] = useState("none");
-  const [currentRequestId, setCurrentRequestId] = useState(null); // store request id for accept/reject
-  const messagesEndRef = useRef(null);
-  const messagesContainerRef = useRef(null);
-  const viewingUserRef = useRef(viewingUser); // keep latest viewingUser
 
-  // update ref when viewingUser changes
+  const [friendStatus, setFriendStatus] = useState("none");
+
+  const [currentRequestId, setCurrentRequestId] = useState(null);
+
+  const messagesEndRef = useRef(null);
+
+  const messagesContainerRef = useRef(null);
+
+  const viewingUserRef = useRef(viewingUser);
+
+  // ============================================================
+  // KEEP LATEST VIEWING USER
+  // ============================================================
+
   useEffect(() => {
     viewingUserRef.current = viewingUser;
   }, [viewingUser]);
 
-  // scroll to bottom helper
+  // ============================================================
+  // SCROLL HELPER
+  // ============================================================
+
   const scrollToBottom = (behavior = "auto") => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
+    messagesEndRef.current?.scrollIntoView({
+      behavior,
+    });
   };
 
-  // scroll to bottom on initial load
   useEffect(() => {
     scrollToBottom("auto");
   }, [chatMessages]);
 
-  // determine other user for 1-on-1 chat
+  // ============================================================
+  // DETERMINE OTHER USER
+  // ============================================================
+
   const otherUser =
     !activeChat?.is_group && activeChat?.members
-      ? activeChat.members.find((m) => m.id !== user.id)
+      ? activeChat.members.find(
+          (member) => Number(member.id) !== Number(user.id),
+        )
       : null;
 
-  // fetch relationship status when viewing a user
+  // ============================================================
+  // FETCH FRIENDSHIP STATUS
+  // ============================================================
+
   useEffect(() => {
-    if (!viewingUser) return;
+    if (!viewingUser) {
+      return;
+    }
 
     const fetchStatus = async () => {
       try {
         const res = await api.get(`/friends/status/${viewingUser.id}`);
+
         setFriendStatus(res.data.status);
 
-        // If status is pending, we might need requestId for accept/reject
-        if (res.data.requestId) {
-          setCurrentRequestId(res.data.requestId);
-        }
+        setCurrentRequestId(res.data.requestId ?? null);
       } catch (err) {
         console.error("Failed to fetch friend status:", err);
       }
@@ -63,21 +86,34 @@ export default function ChatWindow({
     fetchStatus();
   }, [viewingUser]);
 
-  // subscribe to socket updates for friend status
+  // ============================================================
+  // FRIEND REQUEST SOCKET EVENTS
+  // ============================================================
+
   useEffect(() => {
-    if (!socket?.current) return;
+    if (!socket?.current) {
+      return;
+    }
 
     const handleSent = (req) => {
       const vu = viewingUserRef.current;
-      if (!vu) return;
 
-      // If I’m the receiver, status should be pending
-      if (req.receiver.id === user.id && vu.id === req.sender.id) {
+      if (!vu) {
+        return;
+      }
+
+      if (
+        Number(req.receiver?.id) === Number(user.id) &&
+        Number(vu.id) === Number(req.sender?.id)
+      ) {
         setFriendStatus("pending");
         setCurrentRequestId(req.id);
       }
-      // If I’m the sender, status is "sent"
-      if (req.sender.id === user.id && vu.id === req.receiver.id) {
+
+      if (
+        Number(req.sender?.id) === Number(user.id) &&
+        Number(vu.id) === Number(req.receiver?.id)
+      ) {
         setFriendStatus("sent");
         setCurrentRequestId(req.id);
       }
@@ -85,9 +121,12 @@ export default function ChatWindow({
 
     const handleAccepted = (req) => {
       const vu = viewingUserRef.current;
+
       if (
-        (req.sender.id === user.id && vu?.id === req.receiver.id) ||
-        (req.receiver.id === user.id && vu?.id === req.sender.id)
+        (Number(req.sender?.id) === Number(user.id) &&
+          Number(vu?.id) === Number(req.receiver?.id)) ||
+        (Number(req.receiver?.id) === Number(user.id) &&
+          Number(vu?.id) === Number(req.sender?.id))
       ) {
         setFriendStatus("friends");
         setCurrentRequestId(null);
@@ -96,9 +135,12 @@ export default function ChatWindow({
 
     const handleRejected = (req) => {
       const vu = viewingUserRef.current;
+
       if (
-        (req.sender.id === user.id && vu?.id === req.receiver.id) ||
-        (req.receiver.id === user.id && vu?.id === req.sender.id)
+        (Number(req.sender?.id) === Number(user.id) &&
+          Number(vu?.id) === Number(req.receiver?.id)) ||
+        (Number(req.receiver?.id) === Number(user.id) &&
+          Number(vu?.id) === Number(req.sender?.id))
       ) {
         setFriendStatus("none");
         setCurrentRequestId(null);
@@ -106,149 +148,330 @@ export default function ChatWindow({
     };
 
     socket.current.on("friendRequestSent", handleSent);
+
     socket.current.on("friendRequestAccepted", handleAccepted);
+
     socket.current.on("friendRequestRejected", handleRejected);
 
     return () => {
-      if (socket?.current) {
-        socket.current.off("friendRequestSent", handleSent);
-        socket.current.off("friendRequestAccepted", handleAccepted);
-        socket.current.off("friendRequestRejected", handleRejected);
-      }
-    };
-  }, [socket, user]);
+      socket.current?.off("friendRequestSent", handleSent);
 
-  // subscribe to socket updates for new messages
+      socket.current?.off("friendRequestAccepted", handleAccepted);
+
+      socket.current?.off("friendRequestRejected", handleRejected);
+    };
+  }, [socket, user.id]);
+
+  // ============================================================
+  // RECEIVE MESSAGES
+  //
+  // THIS IS THE ONLY PLACE WHERE RECEIVED SOCKET MESSAGES
+  // ARE ADDED TO chatMessages.
+  // ============================================================
+
   useEffect(() => {
-    if (!socket?.current || !activeChat?.id) return;
+    if (!socket?.current || !activeChat?.id || activeChat.isTemporary) {
+      return;
+    }
 
     const handleNewMessage = (message) => {
-      if (message.chat_id !== activeChat.id) return;
+      const messageChatId = message.chat_id ?? message.chatId;
 
-      // prevent duplicates: skip if I already sent it
-      if (message.sender_id === user.id) {
+      if (String(messageChatId) !== String(activeChat.id)) {
         return;
       }
 
-      setChatMessages((prev) => [...prev, message]);
+      /*
+       * The sender already adds their own message from
+       * the HTTP response.
+       *
+       * Therefore don't add the same message again when
+       * Socket.IO sends it back.
+       */
+
+      if (Number(message.sender_id) === Number(user.id)) {
+        return;
+      }
+
+      setChatMessages((prev) => {
+        /*
+         * Extra protection against duplicate socket events.
+         *
+         * If message ID already exists, don't add it again.
+         */
+
+        const alreadyExists = prev.some(
+          (msg) => Number(msg.id) === Number(message.id),
+        );
+
+        if (alreadyExists) {
+          return prev;
+        }
+
+        return [...prev, message];
+      });
+
       scrollToBottom("smooth");
     };
 
     socket.current.on("newMessage", handleNewMessage);
 
     return () => {
-      socket.current.off("newMessage", handleNewMessage);
+      socket.current?.off("newMessage", handleNewMessage);
     };
-  }, [socket, activeChat, setChatMessages, user.id]);
+  }, [
+    socket,
+    activeChat?.id,
+    activeChat?.isTemporary,
+    user.id,
+    setChatMessages,
+  ]);
 
-  // handle sending a new message
+  // ============================================================
+  // SEND MESSAGE
+  // ============================================================
+
   const handleSendMessage = async () => {
-    if (!newMessage.trim()) return;
+    const content = newMessage.trim();
+
+    if (!content) {
+      return;
+    }
+
+    if (!activeChat?.id) {
+      console.error("Cannot send message: no active chat");
+      return;
+    }
 
     try {
       const res = await api.post(`/chats/${activeChat.id}/messages`, {
-        content: newMessage,
+        content,
+        friendId: activeChat.friendId,
       });
+
+      const realChatId = res.data.chatId;
+
+      const savedMessage = res.data.message;
+
+      if (!savedMessage) {
+        console.error("Backend did not return saved message:", res.data);
+        return;
+      }
 
       setNewMessage("");
-      scrollToBottom("smooth");
 
-      // send via socket
-      socket?.current?.emit("sendMessage", {
-        ...res.data,
-        chat_id: activeChat.id,
-      });
-    } catch (err) {
-      console.error("Send message error:", err);
-    }
-  };
+      // ========================================================
+      // ADD SENT MESSAGE LOCALLY
+      //
+      // This is the ONLY place where the sender adds
+      // their own message.
+      // ========================================================
 
-  // handle infinite scroll for older messages
-  const handleScroll = async (e) => {
-    if (e.target.scrollTop === 0 && chatMessages.length) {
-      const token = localStorage.getItem("token");
-      const oldestMessageId = chatMessages[0].id;
-
-      try {
-        const res = await api.get(
-          `/chats/${activeChat.id}/messages?before=${oldestMessageId}`,
-          { headers: { Authorization: `Bearer ${token}` } }
+      setChatMessages((prev) => {
+        const alreadyExists = prev.some(
+          (msg) => Number(msg.id) === Number(savedMessage.id),
         );
 
-        if (res.data.length > 0) {
-          const container = messagesContainerRef.current;
-          const scrollHeightBefore = container.scrollHeight;
-
-          setChatMessages((prev) => [...res.data.reverse(), ...prev]);
-
-          setTimeout(() => {
-            const scrollHeightAfter = container.scrollHeight;
-            container.scrollTop = scrollHeightAfter - scrollHeightBefore;
-          }, 0);
+        if (alreadyExists) {
+          return prev;
         }
-      } catch (err) {
-        console.error("Failed to load older messages:", err);
+
+        return [...prev, savedMessage];
+      });
+
+      // ========================================================
+      // TEMPORARY CHAT -> REAL CHAT
+      // ========================================================
+
+      if (String(activeChat.id) !== String(realChatId)) {
+        const updatedChat = {
+          ...activeChat,
+
+          id: realChatId,
+
+          isTemporary: false,
+
+          lastMessage: savedMessage.content,
+        };
+
+        setChats((prevChats) =>
+          prevChats.map((chat) =>
+            String(chat.id) === String(activeChat.id) ? updatedChat : chat,
+          ),
+        );
+
+        setActiveChat(updatedChat);
+
+        socket?.current?.emit("joinRoom", realChatId);
+
+        socket?.current?.emit("leaveRoom", activeChat.id);
+      } else {
+        // ======================================================
+        // EXISTING CHAT
+        // ======================================================
+
+        setChats((prevChats) =>
+          prevChats.map((chat) =>
+            String(chat.id) === String(realChatId)
+              ? {
+                  ...chat,
+                  lastMessage: savedMessage.content,
+                  isTemporary: false,
+                }
+              : chat,
+          ),
+        );
       }
+
+      scrollToBottom("smooth");
+
+      // ========================================================
+      // NOTIFY SOCKET SERVER
+      // ========================================================
+
+      socket?.current?.emit("sendMessage", {
+        ...savedMessage,
+        chat_id: realChatId,
+      });
+    } catch (err) {
+      console.error("Send message error:", err.response?.data || err);
     }
   };
 
-  // send friend request
+  // ============================================================
+  // INFINITE SCROLL
+  // ============================================================
+
+  const handleScroll = async (e) => {
+    if (
+      e.target.scrollTop !== 0 ||
+      !chatMessages.length ||
+      activeChat?.isTemporary
+    ) {
+      return;
+    }
+
+    const oldestMessageId = chatMessages[0].id;
+
+    try {
+      const res = await api.get(
+        `/chats/${activeChat.id}/messages?before=${oldestMessageId}`,
+      );
+
+      if (res.data.length === 0) {
+        return;
+      }
+
+      const container = messagesContainerRef.current;
+
+      if (!container) {
+        return;
+      }
+
+      const scrollHeightBefore = container.scrollHeight;
+
+      /*
+       * Backend already returns messages in
+       * chronological order.
+       *
+       * Do NOT reverse here.
+       */
+
+      setChatMessages((prev) => {
+        const existingIds = new Set(prev.map((message) => Number(message.id)));
+
+        const newMessages = res.data.filter(
+          (message) => !existingIds.has(Number(message.id)),
+        );
+
+        return [...newMessages, ...prev];
+      });
+
+      setTimeout(() => {
+        const scrollHeightAfter = container.scrollHeight;
+
+        container.scrollTop = scrollHeightAfter - scrollHeightBefore;
+      }, 0);
+    } catch (err) {
+      console.error("Failed to load older messages:", err);
+    }
+  };
+
+  // ============================================================
+  // SEND FRIEND REQUEST
+  // ============================================================
+
   const sendFriendRequest = async () => {
     try {
-      const token = localStorage.getItem("token");
-      const res = await api.post(
-        `/friends/request`,
-        { receiver_id: viewingUser.id },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await api.post("/friends/request", {
+        receiver_id: viewingUser.id,
+      });
+
       setFriendStatus("sent");
+
       setCurrentRequestId(res.data.request.id);
+
       alert("Friend request sent!");
     } catch (err) {
       console.error("Friend request error:", err);
+
       alert("Failed to send request");
     }
   };
 
-  // accept friend request
+  // ============================================================
+  // ACCEPT FRIEND REQUEST
+  // ============================================================
+
   const handleAccept = async () => {
     try {
       await acceptFriendRequest(currentRequestId);
+
       setFriendStatus("friends");
+
       setCurrentRequestId(null);
     } catch (err) {
       console.error("Accept request error:", err);
     }
   };
 
-  // reject friend request
+  // ============================================================
+  // REJECT FRIEND REQUEST
+  // ============================================================
+
   const handleReject = async () => {
     try {
       await rejectFriendRequest(currentRequestId);
+
       setFriendStatus("none");
+
       setCurrentRequestId(null);
     } catch (err) {
       console.error("Reject request error:", err);
     }
   };
 
-  // view user profile
+  // ============================================================
+  // USER PROFILE
+  // ============================================================
+
   if (viewingUser) {
     return (
       <main className={styles.chatWindow}>
-        <div className={styles.searchResSection}>
-          <div className={styles.profileHeader}>
-            <img
-              src={viewingUser.avatar || "/defaultUserProfile.png"}
-              alt={viewingUser.username}
-              className={styles.profileAvatar}
-            />
-            <h2>{viewingUser.username}</h2>
-          </div>
+        <div className={styles.profileContainer}>
+          <img
+            src={viewingUser.avatar || "/defaultUserProfile.png"}
+            alt={viewingUser.username}
+            className={styles.profileAvatar}
+          />
+
+          <h2>{viewingUser.username}</h2>
 
           <div className={styles.profileDetails}>
             {viewingUser.full_name && <p>Full Name: {viewingUser.full_name}</p>}
+
             <p>Email: {viewingUser.email}</p>
+
             {viewingUser.bio && <p>Bio: {viewingUser.bio}</p>}
           </div>
 
@@ -256,14 +479,19 @@ export default function ChatWindow({
             {friendStatus === "none" && (
               <button onClick={sendFriendRequest}>Add Friend</button>
             )}
+
             {friendStatus === "sent" && <button disabled>Request Sent</button>}
+
             {friendStatus === "pending" && (
               <>
                 <button onClick={handleAccept}>Accept</button>
+
                 <button onClick={handleReject}>Reject</button>
               </>
             )}
+
             {friendStatus === "friends" && <button disabled>Friends</button>}
+
             <button onClick={() => setViewingUser(null)}>Back</button>
           </div>
         </div>
@@ -271,34 +499,44 @@ export default function ChatWindow({
     );
   }
 
-  // no active chat
-  if (!activeChat)
-    return (
-      <div className={styles.noChatSelected}>
-        Select a chat to start messaging
-      </div>
-    );
+  // ============================================================
+  // NO ACTIVE CHAT
+  // ============================================================
 
-  // active chat
+  if (!activeChat) {
+    return (
+      <main className={styles.chatWindow}>
+        <div className={styles.noChatSelected}>
+          Select a chat to start messaging
+        </div>
+      </main>
+    );
+  }
+
+  // ============================================================
+  // ACTIVE CHAT
+  // ============================================================
+
   return (
     <main className={styles.chatWindow}>
-      {/* chat header */}
+      {/* ======================================================
+          CHAT HEADER
+         ====================================================== */}
+
       <div className={styles.chatHeader}>
-        <div>
-          <div className={styles.chatName}>
-            {activeChat.is_group
-              ? activeChat.name
-              : otherUser?.username || "Chat"}
-          </div>
-          <div className={styles.lastSeen}>last seen just now</div>
-        </div>
-        <div className={styles.headerIcons}>
-          <img src={SearchIcon} alt="Search" className={styles.icon} />
-          <img src={MoreIcon} alt="More" className={styles.icon} />
-        </div>
+        <h3>
+          {activeChat.is_group
+            ? activeChat.name
+            : otherUser?.username || "Chat"}
+        </h3>
+
+        <span>last seen just now</span>
       </div>
 
-      {/* chat messages */}
+      {/* ======================================================
+          MESSAGES
+         ====================================================== */}
+
       <div
         className={styles.messages}
         onScroll={handleScroll}
@@ -307,23 +545,35 @@ export default function ChatWindow({
           <div
             key={msg.id}
             className={`${styles.message} ${
-              msg.sender_id === user.id ? styles.sent : styles.received
+              Number(msg.sender_id) === Number(user.id)
+                ? styles.sent
+                : styles.received
             }`}>
             {msg.content}
           </div>
         ))}
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* input */}
+      {/* ======================================================
+          INPUT
+         ====================================================== */}
+
       <div className={styles.messageInput}>
         <input
           type="text"
           placeholder="Type a message..."
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSendMessage();
+            }
+          }}
         />
+
         <button onClick={handleSendMessage}>Send</button>
       </div>
     </main>

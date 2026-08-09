@@ -1,40 +1,61 @@
 const pool = require("../utils/db");
-const { getUserById } = require("./User");
 
-//# fetch all chats for a user along with last message
-//# fetch all chats for a user along with last message
+// ============================================================
+// GET ALL CHATS FOR A USER
+//
+// IMPORTANT:
+//
+// Only chats that have at least one message are returned.
+//
+// Therefore:
+//   - empty chats are not returned
+//   - temporary chats are not returned
+//   - old empty chats are also hidden
+// ============================================================
+
 async function getUserChats(userId) {
   const client = await pool.connect();
+
   try {
-    // ensure userId is number
     userId = Number(userId);
 
     const sqlQuery = `
-      SELECT 
-        c.id, 
-        c.name, 
+      SELECT
+        c.id,
+        c.name,
         c.is_group,
-        c.members,   
-        lm.id as last_message_id,
-        lm.content as last_message_content,
-        lm.sender_id as last_message_sender
+        c.members,
+
+        lm.id AS last_message_id,
+        lm.content AS last_message_content,
+        lm.sender_id AS last_message_sender,
+        lm.created_at AS last_message_created_at
+
       FROM chats c
-      LEFT JOIN LATERAL (
-          SELECT * FROM messages m
-          WHERE m.chat_id = c.id
-          ORDER BY m.created_at DESC
-          LIMIT 1
+
+      JOIN LATERAL (
+        SELECT
+          m.id,
+          m.content,
+          m.sender_id,
+          m.created_at
+        FROM messages m
+        WHERE m.chat_id = c.id
+        ORDER BY m.created_at DESC
+        LIMIT 1
       ) lm ON true
+
       WHERE $1 = ANY(c.members)
-      ORDER BY lm.created_at DESC NULLS LAST
+
+      ORDER BY
+        lm.created_at DESC
     `;
-    const res = await client.query(sqlQuery, [userId]);
 
+    const result = await client.query(sqlQuery, [userId]);
 
-    // map member IDs to full user objects and include friendId
     const chatsWithMembers = await Promise.all(
-      res.rows.map(async (chat) => {
-        const memberIds = chat.members || []; // fallback if null
+      result.rows.map(async (chat) => {
+        const memberIds = chat.members || [];
 
         if (!memberIds.length) {
           return {
@@ -47,27 +68,50 @@ async function getUserChats(userId) {
           };
         }
 
-        // fetch full user info
+        // ==================================================
+        // Fetch complete member details
+        // ==================================================
+
         const { rows: members } = await client.query(
-          `SELECT id, username, avatar, email FROM users WHERE id = ANY($1)`,
-          [memberIds]
+          `
+                  SELECT
+                    id,
+                    username,
+                    avatar,
+                    email
+                  FROM users
+                  WHERE id = ANY($1)
+                `,
+          [memberIds],
         );
 
-        
+        // ==================================================
+        // Determine friend in 1-to-1 chat
+        // ==================================================
 
-        // determine friendId for 1:1 chat
         let friendId = null;
+
         if (!chat.is_group && members.length > 0) {
-          const friend = members.find((m) => m.id !== userId);
+          const friend = members.find(
+            (member) => Number(member.id) !== Number(userId),
+          );
+
           friendId = friend?.id || null;
         }
 
-        // structure lastMessage
+        // ==================================================
+        // Last message
+        // ==================================================
+
         const lastMessage = chat.last_message_id
           ? {
               id: chat.last_message_id,
+
               content: chat.last_message_content,
+
               senderId: chat.last_message_sender,
+
+              createdAt: chat.last_message_created_at,
             }
           : null;
 
@@ -79,7 +123,7 @@ async function getUserChats(userId) {
           friendId,
           lastMessage,
         };
-      })
+      }),
     );
 
     return chatsWithMembers;
@@ -88,107 +132,413 @@ async function getUserChats(userId) {
   }
 }
 
-//# fetch messages of a chat in chronological order
-async function getChatMessages(chatId) {
-  const client = await pool.connect();
-  try {
-    const sqlQuery = `
-      SELECT id, sender_id, content, created_at
-      FROM messages
-      WHERE chat_id = $1
-      ORDER BY created_at ASC
-    `;
-    const res = await client.query(sqlQuery, [chatId]);
-    return res.rows;
-  } finally {
-    client.release();
-  }
-}
+// ============================================================
+// CREATE MESSAGE IN EXISTING CHAT
+// ============================================================
 
-//# create a new message 
 async function createMessage(chatId, senderId, content) {
   const client = await pool.connect();
+
   try {
     const sqlQuery = `
-      INSERT INTO messages (chat_id, sender_id, content)
-      VALUES ($1, $2, $3)
-      RETURNING id, chat_id, sender_id, content, created_at
+      INSERT INTO messages
+        (
+          chat_id,
+          sender_id,
+          content
+        )
+      VALUES
+        (
+          $1,
+          $2,
+          $3
+        )
+      RETURNING
+        id,
+        chat_id,
+        sender_id,
+        content,
+        created_at
     `;
-    const res = await client.query(sqlQuery, [chatId, senderId, content]);
-    return res.rows[0];
+
+    const result = await client.query(sqlQuery, [
+      Number(chatId),
+      Number(senderId),
+      content,
+    ]);
+
+    return result.rows[0];
   } finally {
     client.release();
   }
 }
 
-//# create/get a direct chat between two users 
+// ============================================================
+// CREATE OR GET DIRECT CHAT
+//
+// Kept for places that explicitly need to create a chat.
+//
+// IMPORTANT:
+//
+// This function can create an empty chat.
+//
+// Therefore it should NOT be called merely when the user
+// opens a friend without sending a message.
+// ============================================================
+
 async function createOrGetDirectChat(user1Id, user2Id) {
   const client = await pool.connect();
+
   try {
     await client.query("BEGIN");
 
-    // check if chat already exists with both members
+    user1Id = Number(user1Id);
+    user2Id = Number(user2Id);
+
+    if (!user1Id || !user2Id) {
+      throw new Error("Invalid user IDs");
+    }
+
+    if (user1Id === user2Id) {
+      throw new Error("Cannot chat with yourself");
+    }
+
+    // ========================================================
+    // Check existing direct chat
+    // ========================================================
+
     const checkSql = `
-      SELECT c.id, c.members
+      SELECT
+        c.id,
+        c.members
       FROM chats c
       WHERE c.is_group = false
         AND $1 = ANY(c.members)
         AND $2 = ANY(c.members)
       LIMIT 1
     `;
-    const checkRes = await client.query(checkSql, [user1Id, user2Id]);
 
-    if (checkRes.rows.length > 0) {
-      const membersQuery = await client.query(
-        `SELECT id, username, avatar, email FROM users WHERE id = ANY($1)`,
-        [checkRes.rows[0].members]
+    const checkResult = await client.query(checkSql, [user1Id, user2Id]);
+
+    if (checkResult.rows.length > 0) {
+      const chat = checkResult.rows[0];
+
+      const { rows: members } = await client.query(
+        `
+            SELECT
+              id,
+              username,
+              avatar,
+              email
+            FROM users
+            WHERE id = ANY($1)
+          `,
+        [chat.members],
       );
 
-      
-
-      const friend = membersQuery.rows.find(m => m.id !== Number(user1Id));
+      const friend = members.find((member) => Number(member.id) !== user1Id);
 
       await client.query("COMMIT");
 
       return {
-        id: checkRes.rows[0].id,
-        members: membersQuery.rows,
-        friendId: friend?.id || null, // always include friendId
-        lastMessage: null, // can add last message if needed
+        id: chat.id,
+        members,
+        friendId: friend?.id || null,
+        lastMessage: null,
       };
     }
 
-    // create chat if not exists
+    // ========================================================
+    // Create new chat
+    // ========================================================
+
+    const memberIds = [user1Id, user2Id];
+
     const insertChat = await client.query(
-      `INSERT INTO chats (is_group, members) VALUES (false, $1) RETURNING id`,
-      [[user1Id, user2Id]] // integer array
+      `
+          INSERT INTO chats
+            (
+              is_group,
+              members
+            )
+          VALUES
+            (
+              false,
+              $1
+            )
+          RETURNING id
+        `,
+      [memberIds],
     );
+
     const chatId = insertChat.rows[0].id;
 
-    // populate chat_members table if exists
+    // ========================================================
+    // Populate chat_members
+    // ========================================================
+
     await client.query(
-      `INSERT INTO chat_members (chat_id, user_id) VALUES ($1, $2), ($1, $3)`,
-      [chatId, user1Id, user2Id]
+      `
+        INSERT INTO chat_members
+          (
+            chat_id,
+            user_id
+          )
+        VALUES
+          (
+            $1,
+            $2
+          ),
+          (
+            $1,
+            $3
+          )
+      `,
+      [chatId, user1Id, user2Id],
     );
 
-    // fetch full user info for members
+    // ========================================================
+    // Fetch members
+    // ========================================================
+
     const { rows: members } = await client.query(
-      `SELECT id, username, avatar, email FROM users WHERE id = ANY($1)`,
-      [[user1Id, user2Id]]
+      `
+          SELECT
+            id,
+            username,
+            avatar,
+            email
+          FROM users
+          WHERE id = ANY($1)
+        `,
+      [memberIds],
     );
 
-    const friend = members.find(m => m.id !== Number(user1Id));
+    const friend = members.find((member) => Number(member.id) !== user1Id);
 
     await client.query("COMMIT");
 
     return {
       id: chatId,
       members,
-      friendId: friend?.id || null, // always include friendId
+      friendId: friend?.id || null,
       lastMessage: null,
     };
   } catch (err) {
     await client.query("ROLLBACK");
+
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// ============================================================
+// CREATE DIRECT CHAT + FIRST MESSAGE
+//
+// THIS IS THE IMPORTANT FUNCTION.
+//
+// Transaction:
+//
+// BEGIN
+//   ↓
+// Find existing direct chat
+//   ↓
+// Create chat if necessary
+//   ↓
+// Insert first message
+//   ↓
+// Fetch members
+//   ↓
+// COMMIT
+//
+// Any failure:
+//
+// ROLLBACK
+// ============================================================
+
+async function createDirectChatWithMessage(senderId, receiverId, content) {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    senderId = Number(senderId);
+    receiverId = Number(receiverId);
+
+    if (!senderId || !receiverId) {
+      throw new Error("Invalid user IDs");
+    }
+
+    if (senderId === receiverId) {
+      throw new Error("Cannot chat with yourself");
+    }
+
+    // ========================================================
+    // 1. Find existing direct chat
+    // ========================================================
+
+    const checkSql = `
+      SELECT
+        c.id,
+        c.members
+      FROM chats c
+      WHERE c.is_group = false
+        AND $1 = ANY(c.members)
+        AND $2 = ANY(c.members)
+      LIMIT 1
+    `;
+
+    const checkResult = await client.query(checkSql, [senderId, receiverId]);
+
+    let chatId;
+    let memberIds;
+
+    // ========================================================
+    // 2. Existing chat
+    // ========================================================
+
+    if (checkResult.rows.length > 0) {
+      chatId = checkResult.rows[0].id;
+
+      memberIds = checkResult.rows[0].members || [senderId, receiverId];
+    }
+
+    // ========================================================
+    // 3. Create new chat
+    // ========================================================
+    else {
+      memberIds = [senderId, receiverId];
+
+      const insertChat = await client.query(
+        `
+            INSERT INTO chats
+              (
+                is_group,
+                members
+              )
+            VALUES
+              (
+                false,
+                $1
+              )
+            RETURNING id
+          `,
+        [memberIds],
+      );
+
+      chatId = insertChat.rows[0].id;
+
+      // ======================================================
+      // Populate chat_members
+      // ======================================================
+
+      await client.query(
+        `
+          INSERT INTO chat_members
+            (
+              chat_id,
+              user_id
+            )
+          VALUES
+            (
+              $1,
+              $2
+            ),
+            (
+              $1,
+              $3
+            )
+        `,
+        [chatId, senderId, receiverId],
+      );
+    }
+
+    // ========================================================
+    // 4. Insert message
+    // ========================================================
+
+    const messageResult = await client.query(
+      `
+          INSERT INTO messages
+            (
+              chat_id,
+              sender_id,
+              content
+            )
+          VALUES
+            (
+              $1,
+              $2,
+              $3
+            )
+          RETURNING
+            id,
+            chat_id,
+            sender_id,
+            content,
+            created_at
+        `,
+      [chatId, senderId, content],
+    );
+
+    const message = messageResult.rows[0];
+
+    // ========================================================
+    // 5. Fetch members
+    // ========================================================
+
+    const { rows: members } = await client.query(
+      `
+          SELECT
+            id,
+            username,
+            avatar,
+            email
+          FROM users
+          WHERE id = ANY($1)
+        `,
+      [memberIds],
+    );
+
+    const friend = members.find((member) => Number(member.id) !== senderId);
+
+    // ========================================================
+    // 6. Build chat object
+    // ========================================================
+
+    const chat = {
+      id: chatId,
+
+      name: null,
+
+      is_group: false,
+
+      members,
+
+      friendId: friend?.id || null,
+
+      lastMessage: {
+        id: message.id,
+        content: message.content,
+        senderId: message.sender_id,
+        createdAt: message.created_at,
+      },
+    };
+
+    // ========================================================
+    // 7. Commit transaction
+    // ========================================================
+
+    await client.query("COMMIT");
+
+    return {
+      chat,
+      message,
+    };
+  } catch (err) {
+    await client.query("ROLLBACK");
+
     throw err;
   } finally {
     client.release();
@@ -197,7 +547,7 @@ async function createOrGetDirectChat(user1Id, user2Id) {
 
 module.exports = {
   getUserChats,
-  getChatMessages,
   createMessage,
   createOrGetDirectChat,
+  createDirectChatWithMessage,
 };

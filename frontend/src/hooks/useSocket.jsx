@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
-import { getFriends } from "../api/friends";   // 🔥 fetch friends on socket events
+import { getFriends } from "../api/friends";
 
 export default function useSocket(
   user,
@@ -8,105 +8,217 @@ export default function useSocket(
   setChats,
   setChatMessages,
   setFriendStatus,
-  setFriends
+  setFriends,
 ) {
-  const socket = useRef(null);    // useRef - persists across re-renders
+  const socket = useRef(null);
+
+  // Keep the latest active chat without recreating
+  // the socket connection.
+  const activeChatRef = useRef(activeChat);
 
   useEffect(() => {
-    if (!user) return;
+    activeChatRef.current = activeChat;
+  }, [activeChat]);
 
-    if (!socket.current) {
-      // creates a new Socket.IO client and connects it to your backend server
-      socket.current = io(import.meta.env.VITE_BACKEND_URL, { withCredentials: true });
+  // ============================================================
+  // CREATE SOCKET CONNECTION
+  // ============================================================
+
+  useEffect(() => {
+    if (!user?.id) {
+      return;
     }
 
+    /*
+     * IMPORTANT:
+     *
+     * The socket should be created only once for the current user.
+     *
+     * We depend on user.id instead of the complete user object.
+     * This prevents the socket from being recreated when some
+     * unrelated user state changes.
+     */
+
+    const socketInstance = io(import.meta.env.VITE_BACKEND_URL, {
+      withCredentials: true,
+    });
+
+    socket.current = socketInstance;
+
+    // ============================================================
+    // SOCKET CONNECTED
+    // ============================================================
+
     const handleConnect = () => {
-      socket.current.emit("registerUser", user.id);     // tell backend who I am
-    };  
+      console.log("Socket connected:", socketInstance.id);
 
-    //# handle new chat message
+      socketInstance.emit("registerUser", user.id);
+    };
+
+    // ============================================================
+    // NEW MESSAGE
+    //
+    // IMPORTANT:
+    //
+    // This handler ONLY updates the CHAT LIST.
+    //
+    // It does NOT update chatMessages.
+    //
+    // ChatWindow is responsible for displaying messages.
+    // ============================================================
+
     const handleNewMessage = (message) => {
-
-      // Normalize chatId to match your chat state 'id'
       const chatId = message.chat_id ?? message.chatId;
 
-      setChats(prevChats => {
-        const chatExists = prevChats.some(c => c.id === chatId);
-        let updatedChats = prevChats;
+      if (!chatId) {
+        return;
+      }
 
-        if (!chatExists) {
-          // Add new chat if doesn't exist
-          updatedChats = [
+      const content = message.content ?? message.text ?? "";
+
+      setChats((prevChats) => {
+        const existingChat = prevChats.find(
+          (chat) => String(chat.id) === String(chatId),
+        );
+
+        // ========================================================
+        // CHAT DOES NOT EXIST IN CURRENT CHAT LIST
+        // ========================================================
+
+        if (!existingChat) {
+          return [
             {
               id: chatId,
-              members: message.members,
-              name: message.chatName || "Direct Chat", // or whatever your backend sends
-              lastMessage: message.content ?? message.text,
-              type: message.type ?? "friend" // backend may send type/group flag
+              members: message.members || [],
+              name: message.chatName || "Direct Chat",
+              lastMessage: content,
+              type: message.type || "friend",
+              is_group: message.is_group ?? false,
+              friendId: message.friendId ?? null,
+              isTemporary: false,
             },
-            ...prevChats
+            ...prevChats,
           ];
-        } else {
-          // Update lastMessage if exists
-          updatedChats = updatedChats.map(chat =>
-            chat.id === chatId
-              ? { ...chat, lastMessage: message.content ?? message.text }
-              : chat
-          );
         }
-        return updatedChats;
+
+        // ========================================================
+        // CHAT ALREADY EXISTS
+        // ========================================================
+
+        return prevChats.map((chat) =>
+          String(chat.id) === String(chatId)
+            ? {
+                ...chat,
+                lastMessage: content,
+                isTemporary: false,
+              }
+            : chat,
+        );
       });
+    };
 
-      if (activeChat?.id === chatId) {
-        setChatMessages(prev => [...prev, message]);
+    // ============================================================
+    // MESSAGE SENT
+    //
+    // Some socket implementations emit "messageSent" separately.
+    //
+    // We use the same chat-list update logic.
+    // ============================================================
+
+    const handleMessageSent = (message) => {
+      handleNewMessage(message);
+    };
+
+    // ============================================================
+    // FRIEND REQUEST SENT
+    // ============================================================
+
+    const handleFriendRequestSent = () => {
+      if (setFriendStatus) {
+        setFriendStatus("pending");
       }
     };
 
-    //# handle friend request events
-    const handleFriendRequestSent = (req) => {
-      setFriendStatus && setFriendStatus("pending");
-    };
+    // ============================================================
+    // FRIEND REQUEST ACCEPTED
+    // ============================================================
 
-    const handleFriendRequestAccepted = async (req) => {
-      setFriendStatus && setFriendStatus("friends");
+    const handleFriendRequestAccepted = async () => {
+      if (setFriendStatus) {
+        setFriendStatus("friends");
+      }
 
-      // 🔥 refresh friends list instantly
-      if (setFriends) {
-        try {
-          const data = await getFriends("/friends");
-          if (typeof setFriends === "function") {
-            setFriends(data);
-          } else if (setFriends.current) {
-            setFriends.current(data);
-          }
-        } catch (err) {
-          console.error("Failed to refresh friends list:", err);
-        }
+      if (!setFriends) {
+        return;
+      }
+
+      try {
+        const data = await getFriends("/friends");
+
+        setFriends(data);
+      } catch (err) {
+        console.error("Failed to refresh friends list:", err);
       }
     };
 
-    const handleFriendRequestRejected = (req) => {
-      setFriendStatus && setFriendStatus("none");
+    // ============================================================
+    // FRIEND REQUEST REJECTED
+    // ============================================================
+
+    const handleFriendRequestRejected = () => {
+      if (setFriendStatus) {
+        setFriendStatus("none");
+      }
     };
 
-    // socket listeners
-    socket.current.on("connect", handleConnect);
-    socket.current.on("newMessage", handleNewMessage);
-    socket.current.on("friendRequest:sent", handleFriendRequestSent);
-    socket.current.on("friendRequest:accepted", handleFriendRequestAccepted);
-    socket.current.on("friendRequest:rejected", handleFriendRequestRejected);
+    // ============================================================
+    // REGISTER EVENT LISTENERS
+    // ============================================================
 
-    return () => {    // cleanup
-      if (!socket.current) return;
-      socket.current.off("connect", handleConnect);
-      socket.current.off("newMessage", handleNewMessage);
-      socket.current.off("friendRequest:sent", handleFriendRequestSent);
-      socket.current.off("friendRequest:accepted", handleFriendRequestAccepted);
-      socket.current.off("friendRequest:rejected", handleFriendRequestRejected);
-      socket.current.disconnect();
-      socket.current = null; // reset for next mount
+    socketInstance.on("connect", handleConnect);
+
+    socketInstance.on("newMessage", handleNewMessage);
+
+    socketInstance.on("messageSent", handleMessageSent);
+
+    socketInstance.on("friendRequestSent", handleFriendRequestSent);
+
+    socketInstance.on("friendRequestAccepted", handleFriendRequestAccepted);
+
+    socketInstance.on("friendRequestRejected", handleFriendRequestRejected);
+
+    // ============================================================
+    // IF ALREADY CONNECTED
+    // ============================================================
+
+    if (socketInstance.connected) {
+      handleConnect();
+    }
+
+    // ============================================================
+    // CLEANUP
+    // ============================================================
+
+    return () => {
+      socketInstance.off("connect", handleConnect);
+
+      socketInstance.off("newMessage", handleNewMessage);
+
+      socketInstance.off("messageSent", handleMessageSent);
+
+      socketInstance.off("friendRequestSent", handleFriendRequestSent);
+
+      socketInstance.off("friendRequestAccepted", handleFriendRequestAccepted);
+
+      socketInstance.off("friendRequestRejected", handleFriendRequestRejected);
+
+      socketInstance.disconnect();
+
+      if (socket.current === socketInstance) {
+        socket.current = null;
+      }
     };
-  }, [user, activeChat, setChats, setChatMessages, setFriendStatus, setFriends]);
+  }, [user?.id, setChats, setChatMessages, setFriendStatus, setFriends]);
 
-  return socket; // always return the ref
+  return socket;
 }

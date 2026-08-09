@@ -1,11 +1,11 @@
-const http = require('http');
+const http = require("http");
 
 // remove DEBUG_URL if present to prevent Render crash
 if (process.env.DEBUG_URL) delete process.env.DEBUG_URL;
 
-const app = require('./index');
-const { Server } = require('socket.io');
-const { setSocketInstance, onlineUsers } = require('./utils/socket'); // import socket utility
+const app = require("./index");
+const { Server } = require("socket.io");
+const { setSocketInstance, onlineUsers } = require("./utils/socket"); // import socket utility
 
 const PORT = process.env.PORT || 5001;
 

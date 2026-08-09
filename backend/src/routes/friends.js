@@ -61,11 +61,13 @@ router.post("/request", authMiddleware, async (req, res) => {
     res.status(201).json({ message: "Friend request sent", request: fr });
   } catch (err) {
     console.error("Send friend request error:", err);
-    res.status(err.status || 500).json({ message: err.message || "Server error" });
+    res
+      .status(err.status || 500)
+      .json({ message: err.message || "Server error" });
   }
 });
 
-//# get all friend requests (incoming + outgoing) 
+//# get all friend requests (incoming + outgoing)
 router.get("/requests", authMiddleware, async (req, res) => {
   try {
     const data = await getFriendRequestsForUser(req.userId);
@@ -83,8 +85,8 @@ router.get("/requests/pending", authMiddleware, async (req, res) => {
 
     const { incoming, outgoing } = await getFriendRequestsForUser(userId);
 
-    const incomingPending = incoming.filter(r => r.status === "pending");
-    const outgoingPending = outgoing.filter(r => r.status === "pending");
+    const incomingPending = incoming.filter((r) => r.status === "pending");
+    const outgoingPending = outgoing.filter((r) => r.status === "pending");
 
     res.json({ incoming: incomingPending, outgoing: outgoingPending });
   } catch (err) {
@@ -96,7 +98,11 @@ router.get("/requests/pending", authMiddleware, async (req, res) => {
 //# accept a friend request
 router.post("/requests/:id/accept", authMiddleware, async (req, res) => {
   try {
-    const updated = await updateFriendRequestStatus(req.params.id, req.userId, "accepted");
+    const updated = await updateFriendRequestStatus(
+      req.params.id,
+      req.userId,
+      "accepted",
+    );
 
     const io = getSocketInstance();
     const senderSocketId = onlineUsers.get(updated.sender_id);
@@ -109,14 +115,20 @@ router.post("/requests/:id/accept", authMiddleware, async (req, res) => {
     res.json({ message: "Request accepted", request: updated });
   } catch (err) {
     console.error("Accept request error:", err);
-    res.status(err.status || 500).json({ message: err.message || "Server error" });
+    res
+      .status(err.status || 500)
+      .json({ message: err.message || "Server error" });
   }
 });
 
 //# reject a friend request
 router.post("/requests/:id/reject", authMiddleware, async (req, res) => {
   try {
-    const updated = await updateFriendRequestStatus(req.params.id, req.userId, "rejected");
+    const updated = await updateFriendRequestStatus(
+      req.params.id,
+      req.userId,
+      "rejected",
+    );
 
     const io = getSocketInstance();
     const senderSocketId = onlineUsers.get(updated.sender_id);
@@ -129,7 +141,9 @@ router.post("/requests/:id/reject", authMiddleware, async (req, res) => {
     res.json({ message: "Request rejected", request: updated });
   } catch (err) {
     console.error("Reject request error:", err);
-    res.status(err.status || 500).json({ message: err.message || "Server error" });
+    res
+      .status(err.status || 500)
+      .json({ message: err.message || "Server error" });
   }
 });
 
@@ -140,7 +154,7 @@ router.get("/status/:id", authMiddleware, async (req, res) => {
 
   try {
     const friends = await getAllFriends(userId);
-    if (friends.some(f => f.id === otherId)) {
+    if (friends.some((f) => f.id === otherId)) {
       return res.json({ status: "friends", requestId: null });
     }
 
@@ -153,7 +167,7 @@ router.get("/status/:id", authMiddleware, async (req, res) => {
             OR (sender_id=$2 AND receiver_id=$1)
          ORDER BY created_at DESC
          LIMIT 1`,
-        [userId, otherId]
+        [userId, otherId],
       );
 
       if (frRes.rows.length === 0) {

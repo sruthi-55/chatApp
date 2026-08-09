@@ -5,10 +5,7 @@ import { useNavigate } from "react-router-dom";
 
 const IMGBB_UPLOAD_URL = `https://api.imgbb.com/1/upload?key=${import.meta.env.VITE_IMGBB_API_KEY}`;
 
-export default function Register() {
-  const navigate = useNavigate();
-
-  const [formData, setFormData] = useState({
+const initialFormData = {
     avatar: "/defaultUserProfile.png",
     username: "",
     email: "",
@@ -18,29 +15,24 @@ export default function Register() {
     gender: "",
     password: "",
     confirmPassword: "",
-  });
+  };
+  
+export default function Register() {
+  const navigate = useNavigate();
+
+  const [formData, setFormData] = useState(initialFormData);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
+    setFormData((prev)=>({
+      ...prev,
       [e.target.name]: e.target.value,
-    });
+    }));
   };
 
   function handleReset() {
-    setFormData({
-      avatar: "/defaultUserProfile.png",
-      username: "",
-      email: "",
-      full_name: "",
-      phone: "",
-      bio: "",
-      gender: "",
-      password: "",
-      confirmPassword: "",
-    });
+    setFormData(initialFormData);
     setError("");
   }
 
