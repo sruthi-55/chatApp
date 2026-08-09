@@ -1,29 +1,50 @@
 .container {
   display: flex;
+  width: 100%;
   height: 100vh;
+
   background-color: #143A52;
   color: white;
+
   font-weight: 300;
+
+  overflow: hidden;
+}
+
+.chatList {
+  flex-shrink: 0;
+  height: 100vh;
+
+  overflow-y: auto;
 }
 
 .resizer {
   width: 4px;
+  flex-shrink: 0;
+
   cursor: col-resize;
+
   background-color: #aaa;
 }
 
 .resizer:hover {
-  background-color: #aaa;
+  background-color: #888;
 }
 
 .fullWidthSection {
-  flex: 1; /* take all remaining horizontal space */
-  display: flex;
-  justify-content: center; /* horizontally center child content like RequestsSection */
-  align-items: flex-start; /* optional: start at top */
+  flex: 1;
+  min-width: 0;
+  height: 100vh;
+
   padding: 20px;
+
+  overflow-y: auto;
+
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
 }
 
-.section{
+.section {
   width: 100%;
 }

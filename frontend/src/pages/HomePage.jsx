@@ -2,119 +2,267 @@ import { useState, useEffect, useRef } from "react";
 
 import api from "../api/axios";
 import styles from "./Homepage.module.css";
+
 import Sidebar from "../component/Sidebar";
 import ChatsListSection from "../component/ChatsListSection";
 import ChatWindow from "../component/ChatWindow";
 import RequestsSection from "../component/RequestsSection";
+
 import useUser from "../hooks/useUser";
 import useChats from "../hooks/useChats";
 import useSocket from "../hooks/useSocket";
 import useResizer from "../hooks/useResizer";
+
 import Profile from "./Profile";
 
 export default function Homepage() {
-  // resizer
-  const SIDEBAR_WIDTH = 70;
-  const {
-    width: chatListWidth,
-    startResizing,
-    stopResizing,
-    resize,
-  } = useResizer(280, 250, SIDEBAR_WIDTH);
+  // ============================================================
+  // RESIZER
+  // ============================================================
 
-  // user + chats
+  const SIDEBAR_WIDTH = 70;
+
+  const { width: chatListWidth, startResizing } = useResizer(
+    280,
+    250,
+    SIDEBAR_WIDTH,
+  );
+
+  // ============================================================
+  // USER
+  // ============================================================
+
   const user = useUser();
-  const [chats, setChats] = useChats(user);
+
+  // ============================================================
+  // CHATS
+  // ============================================================
+
+  const [chats, setChats, refreshChats] = useChats(user);
+
+  // ============================================================
+  // LOCAL STATE
+  // ============================================================
+
   const [activeChat, setActiveChat] = useState(null);
+
   const [chatMessages, setChatMessages] = useState([]);
+
   const [selectedSection, setSelectedSection] = useState("allChats");
 
   const [chatWindowVisible, setChatWindowVisible] = useState(true);
 
-  // local ref to store setFriends function from ChatsListSection
+  const [viewingUser, setViewingUser] = useState(null);
+
+  // ============================================================
+  // FRIENDS REF
+  // ============================================================
+
   const setFriendsRef = useRef(null);
 
-  // socket (now passes setFriendsRef to keep friends list updated)
+  // ============================================================
+  // PREVIOUS SECTION
+  //
+  // Used to detect:
+  //
+  // allChats -> friendsChat
+  // friendsChat -> allChats
+  // profile -> friendsChat
+  // etc.
+  //
+  // Whenever section changes, the currently open conversation
+  // must be cleared.
+  // ============================================================
+
+  const previousSectionRef = useRef(selectedSection);
+
+  // ============================================================
+  // IS CHAT SECTION?
+  // ============================================================
+
+  const isChatSection = ["allChats", "friendsChat"].includes(selectedSection);
+
+  // ============================================================
+  // SOCKET
+  // ============================================================
+
   const socket = useSocket(
     user,
     activeChat,
     setChats,
-    setChatMessages,
-    null, // no setFriendStatus here
-    setFriendsRef.current, // pass ref.current (the function from ChatsListSection)
+    null,
+    setFriendsRef.current,
   );
 
-  const [currentSection, setCurrentSection] = useState("allChats");
-  const [viewingUser, setViewingUser] = useState(null);
+  // ============================================================
+  // CLEAR ACTIVE CHAT WHEN SECTION CHANGES
+  //
+  // THIS FIXES SCENARIO 1.
+  //
+  // Previously:
+  //
+  // allChats
+  //   -> Chat 14 open
+  //   -> friendsChat
+  //
+  // isChatSection stayed true.
+  //
+  // Therefore activeChat remained Chat 14.
+  //
+  // Socket then thought Chat 14 was still open.
+  // ============================================================
 
-  //# get messages of active chat
   useEffect(() => {
-    if (!activeChat) return;
+    if (previousSectionRef.current !== selectedSection) {
+      console.log(
+        "Section changed:",
+        previousSectionRef.current,
+        "->",
+        selectedSection,
+      );
+
+      setActiveChat(null);
+
+      setChatMessages([]);
+
+      setViewingUser(null);
+    }
+
+    previousSectionRef.current = selectedSection;
+  }, [selectedSection]);
+
+  // ============================================================
+  // REFRESH CHAT LIST WHEN ENTERING CHAT SECTION
+  // ============================================================
+
+  useEffect(() => {
+    if (!isChatSection || !user?.id) {
+      return;
+    }
+
+    console.log("Chat section active -> refreshing chats");
+
+    refreshChats();
+  }, [isChatSection, user?.id, refreshChats]);
+
+  // ============================================================
+  // FETCH MESSAGES FOR ACTIVE CHAT
+  // ============================================================
+
+  useEffect(() => {
+    if (!activeChat || activeChat.isTemporary) {
+      setChatMessages([]);
+
+      return;
+    }
 
     const token = localStorage.getItem("token");
 
     api
       .get(`/chats/${activeChat.id}/messages`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       })
-      .then((res) => setChatMessages(res.data))
-      .catch((err) => console.error("Failed to fetch messages:", err));
+      .then((res) => {
+        setChatMessages(res.data);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch messages:", err);
+      });
+  }, [activeChat]);
 
-    // join chat room for real-time messages
-    socket.current?.emit("joinRoom", activeChat.id);
+  // ============================================================
+  // VIEW USER PROFILE
+  // ============================================================
 
-    // cleanup: leave room when switching
-    return () => {
-      socket.current?.emit("leaveRoom", activeChat.id);
-    };
-  }, [activeChat, socket]);
+  const handleViewUserProfile = (selectedUser) => {
+    setViewingUser(selectedUser);
 
-  if (!user) return <p>Loading...</p>;
-
-  const friendsChats = chats.filter((chat) => chat.type === "friend");
-  const isChatSection = ["allChats", "friendsChat"].includes(selectedSection);
-
-  const handleViewUserProfile = (user) => {
-    setViewingUser(user);
     setActiveChat(null);
+
+    setChatMessages([]);
+
+    setChatWindowVisible(true);
   };
 
+  // ============================================================
+  // LOADING
+  // ============================================================
+
+  if (!user) {
+    return <div>Loading...</div>;
+  }
+
+  // ============================================================
+  // FRIEND CHATS
+  // ============================================================
+
+  const friendsChats = chats.filter((chat) => chat.type === "friend");
+
+  // ============================================================
+  // RENDER
+  // ============================================================
+
   return (
-    <div
-      className={styles.container}
-      onMouseMove={resize}
-      onMouseUp={stopResizing}>
+    <div className={styles.container}>
+      {/* ======================================================
+          SIDEBAR
+         ====================================================== */}
+
       <Sidebar
         user={user}
-        style={{ width: `${SIDEBAR_WIDTH}px` }}
+        style={{
+          width: `${SIDEBAR_WIDTH}px`,
+        }}
         setSelectedSection={setSelectedSection}
         setChatWindowVisible={setChatWindowVisible}
       />
 
+      {/* ======================================================
+          CHAT SECTIONS
+         ====================================================== */}
+
       {isChatSection ? (
         <>
+          {/* ==================================================
+              CHAT LIST
+             ================================================== */}
+
           <aside
             className={styles.chatList}
-            style={{ width: `${chatListWidth}px` }}>
+            style={{
+              width: `${chatListWidth}px`,
+            }}>
             <ChatsListSection
               chats={selectedSection === "allChats" ? chats : friendsChats}
               activeChat={activeChat}
               setActiveChat={(chat) => {
                 setActiveChat(chat);
+
                 setViewingUser(null);
               }}
               onSearchUserClick={handleViewUserProfile}
               setChats={setChats}
-              socket={socket} // pass full ref, not socket.current
+              socket={socket}
               isFriendsSection={selectedSection === "friendsChat"}
               registerSetFriends={(fn) => {
-                setFriendsRef.current = fn; // pass setFriends back up for socket to use
+                setFriendsRef.current = fn;
               }}
               setChatWindowVisible={setChatWindowVisible}
+              currentUserId={user.id}
             />
           </aside>
 
+          {/* ==================================================
+              RESIZER
+             ================================================== */}
+
           <div className={styles.resizer} onMouseDown={startResizing} />
+
+          {/* ==================================================
+              CHAT WINDOW
+             ================================================== */}
 
           {chatWindowVisible && (
             <ChatWindow
@@ -131,14 +279,26 @@ export default function Homepage() {
           )}
         </>
       ) : (
+        // ====================================================
+        // OTHER SECTIONS
+        // ====================================================
+
         <main className={styles.fullWidthSection}>
           {selectedSection === "profile" && (
-            <div>
+            <div className={styles.section}>
               <Profile />
             </div>
           )}
-          {selectedSection === "requests" && <RequestsSection />}
-          {selectedSection === "rooms" && <div>Rooms list here</div>}
+
+          {selectedSection === "requests" && (
+            <div className={styles.section}>
+              <RequestsSection />
+            </div>
+          )}
+
+          {selectedSection === "rooms" && (
+            <div className={styles.section}>Rooms list here</div>
+          )}
         </main>
       )}
     </div>

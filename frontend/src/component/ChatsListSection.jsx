@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 
 import { searchUser } from "../api/user";
+import { getFriends } from "../api/friends";
 
 import styles from "./ChatListSection.module.css";
-
-import { getFriends } from "../api/friends";
 
 export default function ChatsListSection({
   chats,
@@ -68,29 +67,34 @@ export default function ChatsListSection({
 
     let friendId = chat.friendId;
 
-    if (!friendId && chat.members && !chat.is_group) {
-      const friend = chat.members.find(
+    let friend = null;
+
+    if (!chat.is_group && Array.isArray(chat.members)) {
+      friend = chat.members.find(
         (member) => Number(member.id) !== Number(currentUserId),
       );
 
-      friendId = friend?.id || null;
+      if (!friendId) {
+        friendId = friend?.id || null;
+      }
     }
 
     let chatName = chat.name;
 
-    if (!chatName && !chat.is_group && chat.members) {
-      const friend = chat.members.find(
-        (member) => Number(member.id) !== Number(currentUserId),
-      );
-
-      chatName = friend?.username ? `Chat with ${friend.username}` : "Chat";
+    if (!chatName && !chat.is_group) {
+      chatName = friend?.username || "Chat";
     }
 
     return {
       ...chat,
+
       lastMessage: lastMessageText,
+
       friendId,
+
       name: chatName,
+
+      unread_count: Number(chat.unread_count ?? 0),
     };
   });
 
@@ -133,7 +137,7 @@ export default function ChatsListSection({
   };
 
   // ============================================================
-  // SELECT EXISTING CHAT
+  // SELECT CHAT
   // ============================================================
 
   const handleChatSelection = (chat) => {
@@ -152,12 +156,10 @@ export default function ChatsListSection({
 
   // ============================================================
   // CREATE TEMPORARY CHAT
-  //
-  // NO DATABASE REQUEST HERE.
   // ============================================================
 
-  const createTemporaryChat = (user) => {
-    const temporaryId = `temp-${user.id}-${Date.now()}`;
+  const createTemporaryChat = (selectedUser) => {
+    const temporaryId = `temp-${selectedUser.id}-${Date.now()}`;
 
     const temporaryChat = {
       id: temporaryId,
@@ -165,19 +167,19 @@ export default function ChatsListSection({
       members: [
         {
           id: Number(currentUserId),
-          username: user.username,
+          username: "You",
         },
         {
-          id: Number(user.id),
-          username: user.username,
-          avatar: user.avatar,
-          email: user.email,
+          id: Number(selectedUser.id),
+          username: selectedUser.username,
+          avatar: selectedUser.avatar,
+          email: selectedUser.email,
         },
       ],
 
-      friendId: Number(user.id),
+      friendId: Number(selectedUser.id),
 
-      name: `Chat with ${user.username}`,
+      name: `Chat with ${selectedUser.username}`,
 
       lastMessage: "",
 
@@ -186,6 +188,8 @@ export default function ChatsListSection({
       type: "friend",
 
       isTemporary: true,
+
+      unread_count: 0,
     };
 
     setChats((prevChats) => [temporaryChat, ...prevChats]);
@@ -204,8 +208,11 @@ export default function ChatsListSection({
   useEffect(() => {
     if (!searchTerm.trim()) {
       setResults([]);
+
       setShowOverlay(false);
+
       setError(null);
+
       return;
     }
 
@@ -215,8 +222,6 @@ export default function ChatsListSection({
 
         let users = Array.isArray(data) ? data : data.users || [];
 
-        // Friends section:
-        // only show users who are friends.
         if (isFriendsSection) {
           const friendIds = new Set(friends.map((friend) => Number(friend.id)));
 
@@ -225,7 +230,6 @@ export default function ChatsListSection({
           );
         }
 
-        // Never show current user.
         users = users.filter(
           (searchedUser) => Number(searchedUser.id) !== Number(currentUserId),
         );
@@ -266,6 +270,7 @@ export default function ChatsListSection({
 
     if (existingChat) {
       handleChatSelection(existingChat);
+
       return;
     }
 
@@ -273,87 +278,7 @@ export default function ChatsListSection({
   };
 
   // ============================================================
-  // SOCKET MESSAGE EVENTS
-  //
-  // ONLY UPDATE CHAT LIST PREVIEW.
-  //
-  // Do NOT update chatMessages here.
-  // ============================================================
-
-  useEffect(() => {
-    if (!socket?.current) {
-      return;
-    }
-
-    const handleNewMessage = (message) => {
-      const chatId = message.chat_id ?? message.chatId;
-
-      if (!chatId) {
-        return;
-      }
-
-      const content = message.content ?? message.text ?? "";
-
-      setChats((prevChats) => {
-        const existingChat = prevChats.find(
-          (chat) => String(chat.id) === String(chatId),
-        );
-
-        // ======================================================
-        // CHAT DOES NOT EXIST
-        // ======================================================
-
-        if (!existingChat) {
-          return [
-            {
-              id: chatId,
-              members: message.members || [],
-              name: message.chatName || "Direct Chat",
-              lastMessage: content,
-              type: message.type || "friend",
-              is_group: message.is_group ?? false,
-              friendId: message.friendId ?? null,
-              isTemporary: false,
-            },
-            ...prevChats,
-          ];
-        }
-
-        // ======================================================
-        // CHAT EXISTS
-        // ======================================================
-
-        return prevChats.map((chat) =>
-          String(chat.id) === String(chatId)
-            ? {
-                ...chat,
-                lastMessage: content,
-                isTemporary: false,
-              }
-            : chat,
-        );
-      });
-    };
-
-    const handleMessageSent = (message) => {
-      handleNewMessage(message);
-    };
-
-    socket.current.on("newMessage", handleNewMessage);
-
-    socket.current.on("messageSent", handleMessageSent);
-
-    return () => {
-      socket.current?.off("newMessage", handleNewMessage);
-
-      socket.current?.off("messageSent", handleMessageSent);
-    };
-  }, [socket, setChats]);
-
-  // ============================================================
   // FRIEND CHATS
-  //
-  // Only show friends who actually have a chat.
   // ============================================================
 
   const friendChats = friends
@@ -363,6 +288,42 @@ export default function ChatsListSection({
       ),
     )
     .filter(Boolean);
+
+  // ============================================================
+  // RENDER CHAT ITEM
+  // ============================================================
+
+  const renderChatItem = (chat) => {
+    const unreadCount = Number(chat.unread_count ?? 0);
+
+    const displayName =
+      chat.name ||
+      chat.members?.find(
+        (member) => Number(member.id) !== Number(currentUserId),
+      )?.username ||
+      "Chat";
+
+    const isActive = activeChat && String(activeChat.id) === String(chat.id);
+
+    return (
+      <div
+        key={chat.id}
+        className={`${styles.chatItem} ${isActive ? styles.activeChat : ""}`}
+        onClick={() => handleChatSelection(chat)}>
+        <div className={styles.chatInfo}>
+          <div className={styles.chatNameRow}>
+            <p className={styles.chatName}>{displayName}</p>
+
+            {unreadCount > 0 && (
+              <span className={styles.unreadBadge}>{unreadCount}</span>
+            )}
+          </div>
+
+          <p className={styles.chatLastMssg}>{chat.lastMessage || ""}</p>
+        </div>
+      </div>
+    );
+  };
 
   // ============================================================
   // RENDER
@@ -421,49 +382,13 @@ export default function ChatsListSection({
       </div>
 
       {/* ======================================================
-          FRIEND CHAT LIST
+          CHAT LIST
          ====================================================== */}
 
       {isFriendsSection ? (
-        <div>
-          {friendChats.map((chat) => (
-            <div
-              key={chat.id}
-              className={styles.chatItem}
-              onClick={() => handleChatSelection(chat)}>
-              <div className={styles.chatInfo}>
-                <p className={styles.chatName}>
-                  {chat.name ||
-                    chat.members?.find(
-                      (member) => Number(member.id) !== Number(currentUserId),
-                    )?.username ||
-                    "Chat"}
-                </p>
-
-                <p className={styles.chatLastMssg}>{chat.lastMessage || ""}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+        <div>{friendChats.map(renderChatItem)}</div>
       ) : (
-        /* ====================================================
-           ALL CHATS
-           ==================================================== */
-
-        <div>
-          {chatsWithFriendId.map((chat) => (
-            <div
-              key={chat.id}
-              className={styles.chatItem}
-              onClick={() => handleChatSelection(chat)}>
-              <div className={styles.chatInfo}>
-                <p className={styles.chatName}>{chat.name || "Chat"}</p>
-
-                <p className={styles.chatLastMssg}>{chat.lastMessage || ""}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+        <div>{chatsWithFriendId.map(renderChatItem)}</div>
       )}
     </div>
   );

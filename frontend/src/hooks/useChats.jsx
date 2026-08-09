@@ -1,43 +1,91 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import api from "../api/axios";
 
-//# get all chats for logged-in user
+// ============================================================
+// GET ALL CHATS FOR LOGGED-IN USER
+// ============================================================
+
 export default function useChats(user) {
   const [chats, setChats] = useState([]);
 
-  useEffect(() => {
-    if (!user) return;
+  // ==========================================================
+  // FETCH CHATS
+  // ==========================================================
 
-    api.get("/chats")
-      .then((res) => {
+  const fetchChats = useCallback(async () => {
+    if (!user?.id) {
+      return;
+    }
 
-        const chatsData = res.data.map((chat) => {
-          // determine friend for 1:1 chat
-          let friend = null;
-          if (!chat.is_group && chat.members) {
-            friend = chat.members.find((m) => m.id !== user.id);
-          }
+    try {
+      const res = await api.get("/chats");
 
-          // generate chat name
-          const name = chat.is_group
-            ? chat.name
-            : friend
+      const chatsData = res.data.map((chat) => {
+        // ----------------------------------------------------
+        // FIND FRIEND FOR ONE-TO-ONE CHAT
+        // ----------------------------------------------------
+
+        let friend = null;
+
+        if (!chat.is_group && Array.isArray(chat.members)) {
+          friend = chat.members.find(
+            (member) => Number(member.id) !== Number(user.id),
+          );
+        }
+
+        // ----------------------------------------------------
+        // CHAT NAME
+        // ----------------------------------------------------
+
+        const name = chat.is_group
+          ? chat.name
+          : friend
             ? `Chat with ${friend.username}`
             : "Chat";
 
-          return {
-            id: chat.id,
-            name,
-            lastMessage: chat.lastMessage || null,
-            type: chat.is_group ? "group" : "friend",
-            members: chat.members || [],
-            friendId: chat.friendId || (friend ? friend.id : null),
-          };
-        });
-        setChats(chatsData);
-      })
-      .catch((err) => console.error("Failed to fetch chats:", err));
-  }, [user]);
+        // ----------------------------------------------------
+        // NORMALIZE CHAT
+        // ----------------------------------------------------
 
-  return [chats, setChats];
+        return {
+          id: chat.id,
+
+          name,
+
+          lastMessage: chat.lastMessage ?? chat.last_message ?? null,
+
+          type: chat.is_group ? "group" : "friend",
+
+          members: chat.members || [],
+
+          friendId:
+            chat.friendId ?? chat.friend_id ?? (friend ? friend.id : null),
+
+          is_group: chat.is_group,
+
+          isTemporary: false,
+
+          unread_count: Number(chat.unread_count ?? 0),
+        };
+      });
+
+      setChats(chatsData);
+    } catch (err) {
+      console.error("Failed to fetch chats:", err);
+    }
+  }, [user?.id]);
+
+  // ==========================================================
+  // INITIAL FETCH
+  // ==========================================================
+
+  useEffect(() => {
+    fetchChats();
+  }, [fetchChats]);
+
+  // ==========================================================
+  // RETURN
+  // ==========================================================
+
+  return [chats, setChats, fetchChats];
 }

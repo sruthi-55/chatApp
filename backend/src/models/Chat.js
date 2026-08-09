@@ -1,132 +1,139 @@
 const pool = require("../utils/db");
 
 // ============================================================
-// GET ALL CHATS FOR A USER
+// GET ALL CHATS FOR USER
 //
-// IMPORTANT:
+// Returns:
+//   - chat information
+//   - members
+//   - last message
+//   - unread message count
 //
-// Only chats that have at least one message are returned.
+// unread_count:
 //
-// Therefore:
-//   - empty chats are not returned
-//   - temporary chats are not returned
-//   - old empty chats are also hidden
+//   messages in this chat
+//   AND not sent by current user
+//   AND not present in message_reads for current user
 // ============================================================
 
 async function getUserChats(userId) {
   const client = await pool.connect();
 
   try {
-    userId = Number(userId);
-
-    const sqlQuery = `
+    const result = await client.query(
+      `
       SELECT
         c.id,
         c.name,
         c.is_group,
-        c.members,
 
-        lm.id AS last_message_id,
-        lm.content AS last_message_content,
-        lm.sender_id AS last_message_sender,
-        lm.created_at AS last_message_created_at
+        -- ====================================================
+        -- CHAT MEMBERS
+        -- ====================================================
+
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', u.id,
+                'username', u.username,
+                'avatar', u.avatar,
+                'email', u.email
+              )
+            )
+            FROM users u
+            WHERE u.id = ANY(c.members)
+          ),
+          '[]'::json
+        ) AS members,
+
+        -- ====================================================
+        -- LAST MESSAGE
+        -- ====================================================
+
+        COALESCE(
+          (
+            SELECT m.content
+            FROM messages m
+            WHERE m.chat_id = c.id
+            ORDER BY m.created_at DESC
+            LIMIT 1
+          ),
+          ''
+        ) AS last_message,
+
+        -- ====================================================
+        -- UNREAD MESSAGE COUNT
+        -- ====================================================
+
+        (
+          SELECT COUNT(*)
+          FROM messages m
+          WHERE
+            m.chat_id = c.id
+
+            -- Don't count our own messages
+            AND m.sender_id != $1
+
+            -- Message hasn't been read by current user
+            AND NOT EXISTS (
+              SELECT 1
+              FROM message_reads mr
+              WHERE
+                mr.message_id = m.id
+                AND mr.user_id = $1
+            )
+        )::integer AS unread_count
 
       FROM chats c
 
-      JOIN LATERAL (
-        SELECT
-          m.id,
-          m.content,
-          m.sender_id,
-          m.created_at
-        FROM messages m
-        WHERE m.chat_id = c.id
-        ORDER BY m.created_at DESC
-        LIMIT 1
-      ) lm ON true
+      INNER JOIN chat_members cm
+        ON cm.chat_id = c.id
 
-      WHERE $1 = ANY(c.members)
+      WHERE cm.user_id = $1
 
       ORDER BY
-        lm.created_at DESC
-    `;
-
-    const result = await client.query(sqlQuery, [userId]);
-
-    const chatsWithMembers = await Promise.all(
-      result.rows.map(async (chat) => {
-        const memberIds = chat.members || [];
-
-        if (!memberIds.length) {
-          return {
-            id: chat.id,
-            name: chat.name,
-            is_group: chat.is_group,
-            members: [],
-            friendId: null,
-            lastMessage: null,
-          };
-        }
-
-        // ==================================================
-        // Fetch complete member details
-        // ==================================================
-
-        const { rows: members } = await client.query(
-          `
-                  SELECT
-                    id,
-                    username,
-                    avatar,
-                    email
-                  FROM users
-                  WHERE id = ANY($1)
-                `,
-          [memberIds],
-        );
-
-        // ==================================================
-        // Determine friend in 1-to-1 chat
-        // ==================================================
-
-        let friendId = null;
-
-        if (!chat.is_group && members.length > 0) {
-          const friend = members.find(
-            (member) => Number(member.id) !== Number(userId),
-          );
-
-          friendId = friend?.id || null;
-        }
-
-        // ==================================================
-        // Last message
-        // ==================================================
-
-        const lastMessage = chat.last_message_id
-          ? {
-              id: chat.last_message_id,
-
-              content: chat.last_message_content,
-
-              senderId: chat.last_message_sender,
-
-              createdAt: chat.last_message_created_at,
-            }
-          : null;
-
-        return {
-          id: chat.id,
-          name: chat.name,
-          is_group: chat.is_group,
-          members,
-          friendId,
-          lastMessage,
-        };
-      }),
+        (
+          SELECT MAX(m.created_at)
+          FROM messages m
+          WHERE m.chat_id = c.id
+        ) DESC NULLS LAST
+      `,
+      [Number(userId)],
     );
 
-    return chatsWithMembers;
+    return result.rows;
+  } finally {
+    client.release();
+  }
+}
+
+// ============================================================
+// GET MEMBERS OF A CHAT
+//
+// Used by Socket.IO.
+//
+// We need this because a user who isn't currently viewing
+// the chat has NOT joined that chat's Socket.IO room.
+//
+// Therefore the server must know which users should receive
+// the new-message event directly.
+// ============================================================
+
+async function getChatMemberIds(chatId) {
+  const client = await pool.connect();
+
+  try {
+    const result = await client.query(
+      `
+      SELECT user_id
+      FROM chat_members
+      WHERE chat_id = $1
+      `,
+      [Number(chatId)],
+    );
+
+    return result.rows.map((row) => Number(row.user_id));
   } finally {
     client.release();
   }
@@ -175,15 +182,6 @@ async function createMessage(chatId, senderId, content) {
 
 // ============================================================
 // CREATE OR GET DIRECT CHAT
-//
-// Kept for places that explicitly need to create a chat.
-//
-// IMPORTANT:
-//
-// This function can create an empty chat.
-//
-// Therefore it should NOT be called merely when the user
-// opens a friend without sending a message.
 // ============================================================
 
 async function createOrGetDirectChat(user1Id, user2Id) {
@@ -225,14 +223,14 @@ async function createOrGetDirectChat(user1Id, user2Id) {
 
       const { rows: members } = await client.query(
         `
-            SELECT
-              id,
-              username,
-              avatar,
-              email
-            FROM users
-            WHERE id = ANY($1)
-          `,
+        SELECT
+          id,
+          username,
+          avatar,
+          email
+        FROM users
+        WHERE id = ANY($1)
+        `,
         [chat.members],
       );
 
@@ -256,18 +254,18 @@ async function createOrGetDirectChat(user1Id, user2Id) {
 
     const insertChat = await client.query(
       `
-          INSERT INTO chats
-            (
-              is_group,
-              members
-            )
-          VALUES
-            (
-              false,
-              $1
-            )
-          RETURNING id
-        `,
+      INSERT INTO chats
+        (
+          is_group,
+          members
+        )
+      VALUES
+        (
+          false,
+          $1
+        )
+      RETURNING id
+      `,
       [memberIds],
     );
 
@@ -279,20 +277,20 @@ async function createOrGetDirectChat(user1Id, user2Id) {
 
     await client.query(
       `
-        INSERT INTO chat_members
-          (
-            chat_id,
-            user_id
-          )
-        VALUES
-          (
-            $1,
-            $2
-          ),
-          (
-            $1,
-            $3
-          )
+      INSERT INTO chat_members
+        (
+          chat_id,
+          user_id
+        )
+      VALUES
+        (
+          $1,
+          $2
+        ),
+        (
+          $1,
+          $3
+        )
       `,
       [chatId, user1Id, user2Id],
     );
@@ -303,14 +301,14 @@ async function createOrGetDirectChat(user1Id, user2Id) {
 
     const { rows: members } = await client.query(
       `
-          SELECT
-            id,
-            username,
-            avatar,
-            email
-          FROM users
-          WHERE id = ANY($1)
-        `,
+      SELECT
+        id,
+        username,
+        avatar,
+        email
+      FROM users
+      WHERE id = ANY($1)
+      `,
       [memberIds],
     );
 
@@ -335,26 +333,6 @@ async function createOrGetDirectChat(user1Id, user2Id) {
 
 // ============================================================
 // CREATE DIRECT CHAT + FIRST MESSAGE
-//
-// THIS IS THE IMPORTANT FUNCTION.
-//
-// Transaction:
-//
-// BEGIN
-//   ↓
-// Find existing direct chat
-//   ↓
-// Create chat if necessary
-//   ↓
-// Insert first message
-//   ↓
-// Fetch members
-//   ↓
-// COMMIT
-//
-// Any failure:
-//
-// ROLLBACK
 // ============================================================
 
 async function createDirectChatWithMessage(senderId, receiverId, content) {
@@ -375,7 +353,7 @@ async function createDirectChatWithMessage(senderId, receiverId, content) {
     }
 
     // ========================================================
-    // 1. Find existing direct chat
+    // Find existing direct chat
     // ========================================================
 
     const checkSql = `
@@ -395,7 +373,7 @@ async function createDirectChatWithMessage(senderId, receiverId, content) {
     let memberIds;
 
     // ========================================================
-    // 2. Existing chat
+    // Existing chat
     // ========================================================
 
     if (checkResult.rows.length > 0) {
@@ -405,106 +383,102 @@ async function createDirectChatWithMessage(senderId, receiverId, content) {
     }
 
     // ========================================================
-    // 3. Create new chat
+    // Create new chat
     // ========================================================
     else {
       memberIds = [senderId, receiverId];
 
       const insertChat = await client.query(
         `
-            INSERT INTO chats
-              (
-                is_group,
-                members
-              )
-            VALUES
-              (
-                false,
-                $1
-              )
-            RETURNING id
-          `,
+        INSERT INTO chats
+          (
+            is_group,
+            members
+          )
+        VALUES
+          (
+            false,
+            $1
+          )
+        RETURNING id
+        `,
         [memberIds],
       );
 
       chatId = insertChat.rows[0].id;
 
-      // ======================================================
-      // Populate chat_members
-      // ======================================================
-
       await client.query(
         `
-          INSERT INTO chat_members
-            (
-              chat_id,
-              user_id
-            )
-          VALUES
-            (
-              $1,
-              $2
-            ),
-            (
-              $1,
-              $3
-            )
+        INSERT INTO chat_members
+          (
+            chat_id,
+            user_id
+          )
+        VALUES
+          (
+            $1,
+            $2
+          ),
+          (
+            $1,
+            $3
+          )
         `,
         [chatId, senderId, receiverId],
       );
     }
 
     // ========================================================
-    // 4. Insert message
+    // Insert message
     // ========================================================
 
     const messageResult = await client.query(
       `
-          INSERT INTO messages
-            (
-              chat_id,
-              sender_id,
-              content
-            )
-          VALUES
-            (
-              $1,
-              $2,
-              $3
-            )
-          RETURNING
-            id,
-            chat_id,
-            sender_id,
-            content,
-            created_at
-        `,
+      INSERT INTO messages
+        (
+          chat_id,
+          sender_id,
+          content
+        )
+      VALUES
+        (
+          $1,
+          $2,
+          $3
+        )
+      RETURNING
+        id,
+        chat_id,
+        sender_id,
+        content,
+        created_at
+      `,
       [chatId, senderId, content],
     );
 
     const message = messageResult.rows[0];
 
     // ========================================================
-    // 5. Fetch members
+    // Fetch members
     // ========================================================
 
     const { rows: members } = await client.query(
       `
-          SELECT
-            id,
-            username,
-            avatar,
-            email
-          FROM users
-          WHERE id = ANY($1)
-        `,
+      SELECT
+        id,
+        username,
+        avatar,
+        email
+      FROM users
+      WHERE id = ANY($1)
+      `,
       [memberIds],
     );
 
     const friend = members.find((member) => Number(member.id) !== senderId);
 
     // ========================================================
-    // 6. Build chat object
+    // Build chat object
     // ========================================================
 
     const chat = {
@@ -524,11 +498,9 @@ async function createDirectChatWithMessage(senderId, receiverId, content) {
         senderId: message.sender_id,
         createdAt: message.created_at,
       },
-    };
 
-    // ========================================================
-    // 7. Commit transaction
-    // ========================================================
+      unread_count: 0,
+    };
 
     await client.query("COMMIT");
 
@@ -547,6 +519,7 @@ async function createDirectChatWithMessage(senderId, receiverId, content) {
 
 module.exports = {
   getUserChats,
+  getChatMemberIds,
   createMessage,
   createOrGetDirectChat,
   createDirectChatWithMessage,

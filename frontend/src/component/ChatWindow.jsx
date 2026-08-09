@@ -29,17 +29,17 @@ export default function ChatWindow({
 
   const viewingUserRef = useRef(viewingUser);
 
-  // ============================================================
+  // ==========================================================
   // KEEP LATEST VIEWING USER
-  // ============================================================
+  // ==========================================================
 
   useEffect(() => {
     viewingUserRef.current = viewingUser;
   }, [viewingUser]);
 
-  // ============================================================
-  // SCROLL HELPER
-  // ============================================================
+  // ==========================================================
+  // SCROLL
+  // ==========================================================
 
   const scrollToBottom = (behavior = "auto") => {
     messagesEndRef.current?.scrollIntoView({
@@ -51,9 +51,9 @@ export default function ChatWindow({
     scrollToBottom("auto");
   }, [chatMessages]);
 
-  // ============================================================
-  // DETERMINE OTHER USER
-  // ============================================================
+  // ==========================================================
+  // OTHER USER
+  // ==========================================================
 
   const otherUser =
     !activeChat?.is_group && activeChat?.members
@@ -62,9 +62,9 @@ export default function ChatWindow({
         )
       : null;
 
-  // ============================================================
-  // FETCH FRIENDSHIP STATUS
-  // ============================================================
+  // ==========================================================
+  // FRIENDSHIP STATUS
+  // ==========================================================
 
   useEffect(() => {
     if (!viewingUser) {
@@ -86,9 +86,9 @@ export default function ChatWindow({
     fetchStatus();
   }, [viewingUser]);
 
-  // ============================================================
+  // ==========================================================
   // FRIEND REQUEST SOCKET EVENTS
-  // ============================================================
+  // ==========================================================
 
   useEffect(() => {
     if (!socket?.current) {
@@ -107,6 +107,7 @@ export default function ChatWindow({
         Number(vu.id) === Number(req.sender?.id)
       ) {
         setFriendStatus("pending");
+
         setCurrentRequestId(req.id);
       }
 
@@ -115,6 +116,7 @@ export default function ChatWindow({
         Number(vu.id) === Number(req.receiver?.id)
       ) {
         setFriendStatus("sent");
+
         setCurrentRequestId(req.id);
       }
     };
@@ -129,6 +131,7 @@ export default function ChatWindow({
           Number(vu?.id) === Number(req.sender?.id))
       ) {
         setFriendStatus("friends");
+
         setCurrentRequestId(null);
       }
     };
@@ -143,6 +146,7 @@ export default function ChatWindow({
           Number(vu?.id) === Number(req.sender?.id))
       ) {
         setFriendStatus("none");
+
         setCurrentRequestId(null);
       }
     };
@@ -162,12 +166,13 @@ export default function ChatWindow({
     };
   }, [socket, user.id]);
 
-  // ============================================================
-  // RECEIVE MESSAGES
+  // ==========================================================
+  // RECEIVE NEW MESSAGE
   //
-  // THIS IS THE ONLY PLACE WHERE RECEIVED SOCKET MESSAGES
-  // ARE ADDED TO chatMessages.
-  // ============================================================
+  // ONLY updates messages inside the currently open chat.
+  //
+  // useSocket handles chat-list state.
+  // ==========================================================
 
   useEffect(() => {
     if (!socket?.current || !activeChat?.id || activeChat.isTemporary) {
@@ -181,27 +186,15 @@ export default function ChatWindow({
         return;
       }
 
-      /*
-       * The sender already adds their own message from
-       * the HTTP response.
-       *
-       * Therefore don't add the same message again when
-       * Socket.IO sends it back.
-       */
-
-      if (Number(message.sender_id) === Number(user.id)) {
+      // Ignore our own message.
+      if (Number(message.sender_id ?? message.senderId) === Number(user.id)) {
         return;
       }
 
       setChatMessages((prev) => {
-        /*
-         * Extra protection against duplicate socket events.
-         *
-         * If message ID already exists, don't add it again.
-         */
-
         const alreadyExists = prev.some(
-          (msg) => Number(msg.id) === Number(message.id),
+          (existingMessage) =>
+            Number(existingMessage.id) === Number(message.id),
         );
 
         if (alreadyExists) {
@@ -227,23 +220,9 @@ export default function ChatWindow({
     setChatMessages,
   ]);
 
-  // ============================================================
+  // ==========================================================
   // MARK MESSAGES AS READ
-  //
-  // The current user is the READER.
-  //
-  // We only send IDs of messages:
-  //
-  //   1. belonging to the current chat
-  //   2. sent by another user
-  //   3. currently marked as unread
-  //
-  // Backend then inserts:
-  //
-  //   message_id + current_user_id
-  //
-  // into message_reads.
-  // ============================================================
+  // ==========================================================
 
   useEffect(() => {
     if (
@@ -258,7 +237,8 @@ export default function ChatWindow({
 
     const unreadMessageIds = chatMessages
       .filter((message) => {
-        const isIncoming = Number(message.sender_id) !== Number(user.id);
+        const isIncoming =
+          Number(message.sender_id ?? message.senderId) !== Number(user.id);
 
         const isUnread = message.is_read !== true;
 
@@ -273,11 +253,7 @@ export default function ChatWindow({
       return;
     }
 
-    console.log("Sending messages to mark as read:", {
-      chatId: activeChat.id,
-      userId: user.id,
-      messageIds: unreadMessageIds,
-    });
+    console.log("Marking messages as read:", unreadMessageIds);
 
     let cancelled = false;
 
@@ -286,8 +262,6 @@ export default function ChatWindow({
         const response = await api.post(`/chats/${activeChat.id}/read`, {
           messageIds: unreadMessageIds,
         });
-
-        console.log("Mark as read response:", response.data);
 
         if (cancelled) {
           return;
@@ -301,7 +275,10 @@ export default function ChatWindow({
           return;
         }
 
-        // Immediately update local receiver state.
+        // ================================================
+        // UPDATE MESSAGE READ STATE
+        // ================================================
+
         setChatMessages((prev) =>
           prev.map((message) =>
             markedMessageIds.has(Number(message.id))
@@ -310,6 +287,21 @@ export default function ChatWindow({
                   is_read: true,
                 }
               : message,
+          ),
+        );
+
+        // ================================================
+        // CLEAR CHAT BADGE
+        // ================================================
+
+        setChats((prevChats) =>
+          prevChats.map((chat) =>
+            String(chat.id) === String(activeChat.id)
+              ? {
+                  ...chat,
+                  unread_count: 0,
+                }
+              : chat,
           ),
         );
       } catch (err) {
@@ -331,25 +323,12 @@ export default function ChatWindow({
     chatMessages,
     user?.id,
     setChatMessages,
+    setChats,
   ]);
 
-  // ============================================================
-  // RECEIVE MESSAGE READ EVENTS
-  //
-  // Receiver has read one or more messages that WE sent.
-  //
-  // Backend sends:
-  //
-  // {
-  //   chatId: 5,
-  //   messageIds: [31, 32],
-  //   readBy: 7
-  // }
-  //
-  // We update our sent messages:
-  //
-  //     ✓  →  ✓✓
-  // ============================================================
+  // ==========================================================
+  // RECEIVE messagesRead
+  // ==========================================================
 
   useEffect(() => {
     if (!socket?.current || !activeChat?.id) {
@@ -386,15 +365,9 @@ export default function ChatWindow({
     };
   }, [socket, activeChat?.id, setChatMessages]);
 
-  // ============================================================
-  // JOIN ACTIVE CHAT SOCKET ROOM
-  // ============================================================
-  //
-  // This makes sure the current user receives realtime
-  // messages for the chat they opened.
-  //
-  // It is separate from the HTTP read-receipt mechanism.
-  // ============================================================
+  // ==========================================================
+  // JOIN ACTIVE CHAT ROOM
+  // ==========================================================
 
   useEffect(() => {
     if (!socket?.current || !activeChat?.id || activeChat.isTemporary) {
@@ -414,9 +387,9 @@ export default function ChatWindow({
     };
   }, [socket, activeChat?.id, activeChat?.isTemporary]);
 
-  // ============================================================
+  // ==========================================================
   // SEND MESSAGE
-  // ============================================================
+  // ==========================================================
 
   const handleSendMessage = async () => {
     const content = newMessage.trim();
@@ -427,12 +400,14 @@ export default function ChatWindow({
 
     if (!activeChat?.id) {
       console.error("Cannot send message: no active chat");
+
       return;
     }
 
     try {
       const res = await api.post(`/chats/${activeChat.id}/messages`, {
         content,
+
         friendId: activeChat.friendId,
       });
 
@@ -442,17 +417,15 @@ export default function ChatWindow({
 
       if (!savedMessage) {
         console.error("Backend did not return saved message:", res.data);
+
         return;
       }
 
       setNewMessage("");
 
-      // ========================================================
+      // ====================================================
       // ADD SENT MESSAGE LOCALLY
-      //
-      // This is the ONLY place where the sender adds
-      // their own message.
-      // ========================================================
+      // ====================================================
 
       setChatMessages((prev) => {
         const alreadyExists = prev.some(
@@ -466,9 +439,9 @@ export default function ChatWindow({
         return [...prev, savedMessage];
       });
 
-      // ========================================================
+      // ====================================================
       // TEMPORARY CHAT -> REAL CHAT
-      // ========================================================
+      // ====================================================
 
       if (String(activeChat.id) !== String(realChatId)) {
         const updatedChat = {
@@ -479,6 +452,8 @@ export default function ChatWindow({
           isTemporary: false,
 
           lastMessage: savedMessage.content,
+
+          unread_count: 0,
         };
 
         setChats((prevChats) =>
@@ -493,16 +468,18 @@ export default function ChatWindow({
 
         socket?.current?.emit("leaveRoom", activeChat.id);
       } else {
-        // ======================================================
+        // ================================================
         // EXISTING CHAT
-        // ======================================================
+        // ================================================
 
         setChats((prevChats) =>
           prevChats.map((chat) =>
             String(chat.id) === String(realChatId)
               ? {
                   ...chat,
+
                   lastMessage: savedMessage.content,
+
                   isTemporary: false,
                 }
               : chat,
@@ -512,12 +489,13 @@ export default function ChatWindow({
 
       scrollToBottom("smooth");
 
-      // ========================================================
+      // ====================================================
       // NOTIFY SOCKET SERVER
-      // ========================================================
+      // ====================================================
 
       socket?.current?.emit("sendMessage", {
         ...savedMessage,
+
         chat_id: realChatId,
       });
     } catch (err) {
@@ -525,9 +503,9 @@ export default function ChatWindow({
     }
   };
 
-  // ============================================================
+  // ==========================================================
   // INFINITE SCROLL
-  // ============================================================
+  // ==========================================================
 
   const handleScroll = async (e) => {
     if (
@@ -557,13 +535,6 @@ export default function ChatWindow({
 
       const scrollHeightBefore = container.scrollHeight;
 
-      /*
-       * Backend already returns messages in
-       * chronological order.
-       *
-       * Do NOT reverse here.
-       */
-
       setChatMessages((prev) => {
         const existingIds = new Set(prev.map((message) => Number(message.id)));
 
@@ -584,9 +555,9 @@ export default function ChatWindow({
     }
   };
 
-  // ============================================================
-  // SEND FRIEND REQUEST
-  // ============================================================
+  // ==========================================================
+  // FRIEND REQUEST
+  // ==========================================================
 
   const sendFriendRequest = async () => {
     try {
@@ -606,9 +577,9 @@ export default function ChatWindow({
     }
   };
 
-  // ============================================================
+  // ==========================================================
   // ACCEPT FRIEND REQUEST
-  // ============================================================
+  // ==========================================================
 
   const handleAccept = async () => {
     try {
@@ -622,9 +593,9 @@ export default function ChatWindow({
     }
   };
 
-  // ============================================================
+  // ==========================================================
   // REJECT FRIEND REQUEST
-  // ============================================================
+  // ==========================================================
 
   const handleReject = async () => {
     try {
@@ -638,77 +609,73 @@ export default function ChatWindow({
     }
   };
 
-  // ============================================================
-  // USER PROFILE
-  // ============================================================
+  // ==========================================================
+  // PROFILE
+  // ==========================================================
 
   if (viewingUser) {
     return (
-      <main className={styles.chatWindow}>
-        <div className={styles.profileContainer}>
-          <img
-            src={viewingUser.avatar || "/defaultUserProfile.png"}
-            alt={viewingUser.username}
-            className={styles.profileAvatar}
-          />
+      <main className={styles.profile}>
+        <img
+          src={viewingUser.avatar || "/defaultUserProfile.png"}
+          alt={viewingUser.username}
+          className={styles.profileAvatar}
+        />
 
-          <h2>{viewingUser.username}</h2>
+        <h2>{viewingUser.username}</h2>
 
-          <div className={styles.profileDetails}>
-            {viewingUser.full_name && <p>Full Name: {viewingUser.full_name}</p>}
+        <div className={styles.profileDetails}>
+          {viewingUser.full_name && <p>Full Name: {viewingUser.full_name}</p>}
 
-            <p>Email: {viewingUser.email}</p>
+          <p>Email: {viewingUser.email}</p>
 
-            {viewingUser.bio && <p>Bio: {viewingUser.bio}</p>}
-          </div>
+          {viewingUser.bio && <p>Bio: {viewingUser.bio}</p>}
+        </div>
 
-          <div className={styles.profileActions}>
-            {friendStatus === "none" && (
-              <button onClick={sendFriendRequest}>Add Friend</button>
-            )}
+        <div className={styles.profileActions}>
+          {friendStatus === "none" && (
+            <button onClick={sendFriendRequest}>Add Friend</button>
+          )}
 
-            {friendStatus === "sent" && <button disabled>Request Sent</button>}
+          {friendStatus === "sent" && <button disabled>Request Sent</button>}
 
-            {friendStatus === "pending" && (
-              <>
-                <button onClick={handleAccept}>Accept</button>
+          {friendStatus === "pending" && (
+            <>
+              <button onClick={handleAccept}>Accept</button>
 
-                <button onClick={handleReject}>Reject</button>
-              </>
-            )}
+              <button onClick={handleReject}>Reject</button>
+            </>
+          )}
 
-            {friendStatus === "friends" && <button disabled>Friends</button>}
+          {friendStatus === "friends" && <button disabled>Friends</button>}
 
-            <button onClick={() => setViewingUser(null)}>Back</button>
-          </div>
+          <button onClick={() => setViewingUser(null)}>Back</button>
         </div>
       </main>
     );
   }
 
-  // ============================================================
+  // ==========================================================
   // NO ACTIVE CHAT
-  // ============================================================
+  // ==========================================================
 
   if (!activeChat) {
     return (
       <main className={styles.chatWindow}>
-        <div className={styles.noChatSelected}>
-          Select a chat to start messaging
-        </div>
+        <div className={styles.emptyChat}>Select a chat to start messaging</div>
       </main>
     );
   }
 
-  // ============================================================
+  // ==========================================================
   // ACTIVE CHAT
-  // ============================================================
+  // ==========================================================
 
   return (
     <main className={styles.chatWindow}>
-      {/* ======================================================
-          CHAT HEADER
-         ====================================================== */}
+      {/* ====================================================
+          HEADER
+         ==================================================== */}
 
       <div className={styles.chatHeader}>
         <h3>
@@ -720,16 +687,17 @@ export default function ChatWindow({
         <span>last seen just now</span>
       </div>
 
-      {/* ======================================================
+      {/* ====================================================
           MESSAGES
-         ====================================================== */}
+         ==================================================== */}
 
       <div
         className={styles.messages}
         onScroll={handleScroll}
         ref={messagesContainerRef}>
         {chatMessages.map((msg) => {
-          const isSentByCurrentUser = Number(msg.sender_id) === Number(user.id);
+          const isSentByCurrentUser =
+            Number(msg.sender_id ?? msg.senderId) === Number(user.id);
 
           return (
             <div
@@ -751,9 +719,9 @@ export default function ChatWindow({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* ======================================================
+      {/* ====================================================
           INPUT
-         ====================================================== */}
+         ==================================================== */}
 
       <div className={styles.messageInput}>
         <input
@@ -764,6 +732,7 @@ export default function ChatWindow({
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
+
               handleSendMessage();
             }
           }}

@@ -148,3 +148,36 @@
 .profileActions button:hover {
   background-color: #5d727a;
 }
+
+
+
+
+
+
+.chatWindow {
+  flex: 1;
+
+  min-width: 0;
+  height: 100vh;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+}
+
+.chatHeader {
+  flex-shrink: 0;
+}
+
+.messages {
+  flex: 1;
+
+  min-height: 0;
+
+  overflow-y: auto;
+}
+
+.messageInput {
+  flex-shrink: 0;
+}

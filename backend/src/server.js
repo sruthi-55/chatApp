@@ -1,5 +1,6 @@
 const http = require("http");
 
+// Remove DEBUG_URL if present to prevent Render crash
 if (process.env.DEBUG_URL) {
   delete process.env.DEBUG_URL;
 }
@@ -10,7 +11,13 @@ const { Server } = require("socket.io");
 
 const { setSocketInstance, onlineUsers } = require("./utils/socket");
 
+const { getChatMemberIds } = require("./models/Chat");
+
 const PORT = process.env.PORT || 5001;
+
+// ============================================================
+// CREATE HTTP SERVER
+// ============================================================
 
 const server = http.createServer(app);
 
@@ -28,7 +35,10 @@ const io = new Server(server, {
   },
 });
 
-// Make Socket.IO available to routes.
+// ============================================================
+// REGISTER SOCKET INSTANCE
+// ============================================================
+
 setSocketInstance(io);
 
 // ============================================================
@@ -45,7 +55,7 @@ io.on("connection", (socket) => {
   socket.on("registerUser", (userId) => {
     const parsedUserId = Number(userId);
 
-    if (!Number.isInteger(parsedUserId)) {
+    if (!parsedUserId) {
       return;
     }
 
@@ -56,13 +66,11 @@ io.on("connection", (socket) => {
 
   // ==========================================================
   // JOIN CHAT ROOM
+  //
+  // Still useful for chat-specific socket communication.
   // ==========================================================
 
   socket.on("joinRoom", (chatId) => {
-    if (!chatId) {
-      return;
-    }
-
     socket.join(String(chatId));
 
     console.log(`Socket ${socket.id} joined chat ${chatId}`);
@@ -73,10 +81,6 @@ io.on("connection", (socket) => {
   // ==========================================================
 
   socket.on("leaveRoom", (chatId) => {
-    if (!chatId) {
-      return;
-    }
-
     socket.leave(String(chatId));
 
     console.log(`Socket ${socket.id} left chat ${chatId}`);
@@ -84,16 +88,75 @@ io.on("connection", (socket) => {
 
   // ==========================================================
   // SEND MESSAGE
+  //
+  // IMPORTANT:
+  //
+  // Do NOT only emit to the chat room.
+  //
+  // A user may not currently have this chat open.
+  //
+  // Example:
+  //
+  // User B is viewing Chat 5.
+  //
+  // User A sends a message in Chat 11.
+  //
+  // User B is NOT inside room 11.
+  //
+  // Therefore:
+  //
+  //     io.to(11).emit(...)
+  //
+  // would never reach User B.
+  //
+  // Instead, find all chat members and notify their
+  // currently connected sockets directly.
   // ==========================================================
 
-  socket.on("sendMessage", (message) => {
-    console.log("Server got sendMessage:", message);
+  socket.on("sendMessage", async (message) => {
+    try {
+      console.log("Server got sendMessage:", message);
 
-    if (!message?.chat_id) {
-      return;
+      const chatId = Number(message.chat_id ?? message.chatId);
+
+      const senderId = Number(message.sender_id);
+
+      if (!chatId || !senderId) {
+        console.error("Invalid sendMessage payload:", message);
+
+        return;
+      }
+
+      // ======================================================
+      // Get all users belonging to this chat
+      // ======================================================
+
+      const memberIds = await getChatMemberIds(chatId);
+
+      // ======================================================
+      // Notify every ONLINE member
+      //
+      // This includes sender.
+      //
+      // Sender's ChatWindow ignores its own message because
+      // sender_id === current user.
+      // ======================================================
+
+      for (const memberId of memberIds) {
+        const socketId = onlineUsers.get(Number(memberId));
+
+        if (!socketId) {
+          continue;
+        }
+
+        io.to(socketId).emit("newMessage", {
+          ...message,
+          chat_id: chatId,
+        });
+      }
+    } catch (err) {
+      console.error("Socket sendMessage error:", err);
     }
-
-    io.to(String(message.chat_id)).emit("newMessage", message);
   });
 
   // ==========================================================
@@ -107,6 +170,8 @@ io.on("connection", (socket) => {
       if (socketId === socket.id) {
         onlineUsers.delete(userId);
 
+        console.log(`Removed online user ${userId}`);
+
         break;
       }
     }
@@ -118,7 +183,7 @@ io.on("connection", (socket) => {
 // ============================================================
 
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
 
 module.exports = {
