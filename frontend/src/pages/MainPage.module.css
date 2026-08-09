@@ -45,16 +45,24 @@
   display: flex;
   gap: 20px;
   justify-content: center;
+  margin-bottom: 20px;
+  margin-top: 5px;
 }
 
 .btn {
   background-color: #333446;
   color: white;
-  padding: 10px 24px;
+  padding: 10px 42px;
+
   border-radius: 8px;
   text-decoration: none;
   font-weight: 500;
-  width: 80px;
+  width: 150px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
 }
 
 .btn:hover {
@@ -64,12 +72,15 @@
 .btnSecondary {
   background-color: #f0f0f0;
   color: #333;
-  padding: 10px 24px;
   border-radius: 8px;
   text-decoration: none;
   font-weight: 500;
   border: 2px solid black;
-  width: 80px;
+  width: 150px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .btnSecondary:hover {
